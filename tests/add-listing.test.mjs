@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import {
   REPLY_COLUMNS,
   dateText,
+  HAND_COLUMNS,
+  blankFields,
   fieldProblems,
   fixValue,
+  handProblems,
   listingLink,
   newListingRow,
   pageSpot,
@@ -209,4 +212,35 @@ test("the page spot is used only when both lat and long are given", () => {
 
 test("Date added is the local date as YYYY-MM-DD", () => {
   assert.equal(dateText(new Date(2026, 9, 3, 23, 30)), "2026-10-03");
+});
+
+test("the hand form starts empty, with the phone and owner fields after Broker name", () => {
+  const fields = blankFields();
+  assert.equal(fields.length, Object.keys(REPLY_COLUMNS).length + Object.keys(HAND_COLUMNS).length);
+  assert.ok(fields.every((f) => f.value === "" && !f.fixed));
+  const keys = fields.map((f) => f.key);
+  assert.deepEqual(keys.slice(keys.indexOf("brokerName"), keys.indexOf("brokerName") + 4), ["brokerName", "brokerPhone", "ownerName", "ownerPhone"]);
+  for (const f of fields) assert.ok(TRACKER_COLUMNS.includes(f.column), f.column);
+});
+
+test("the hand form needs a society or a locality", () => {
+  assert.deepEqual(handProblems({ society: " ", locality: "" }), ["Fill in the society or the locality."]);
+  assert.deepEqual(handProblems({ society: "", locality: "Bellandur" }), []);
+  assert.deepEqual(handProblems({ society: "Prestige Lakeside", locality: "" }), []);
+});
+
+test("a hand listing with no link saves the phone and owner cells", () => {
+  const values = { society: "Green Glen", configuration: "2BHK", rent: "40k", ownerName: " Meera ", ownerPhone: "98450 12345", brokerPhone: "" };
+  const row = newListingRow({ id: "L-3", values, link: "", addedBy: "Asha", today: "2026-10-23", spot: null });
+  assert.equal(row["Listing link"], "");
+  assert.equal(row["Owner name"], "Meera");
+  assert.equal(row["Owner phone"], "98450 12345");
+  assert.equal(row["Broker phone"], "");
+  assert.equal(row["Rent (₹/month)"], 40000);
+  for (const column of Object.keys(row)) assert.ok(TRACKER_COLUMNS.includes(column), column);
+});
+
+test("a row from a Claude reply leaves the phone and owner cells out", () => {
+  const row = newListingRow({ id: "L-4", values: { society: "X" }, link: "", addedBy: "Asha", today: "2026-10-23", spot: null });
+  assert.ok(!("Owner name" in row) && !("Owner phone" in row) && !("Broker phone" in row));
 });

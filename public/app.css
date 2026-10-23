@@ -1351,6 +1351,7 @@ button.place-open:hover {
 }
 
 .add-form input,
+.add-form select,
 .add-form textarea,
 .add-prompt {
   width: 100%;
@@ -1443,8 +1444,10 @@ button.place-open:hover {
   margin-bottom: 0.75rem;
 }
 
-/* "Reply looks wrong?" is small, so it does not pull the eye from the main button. */
-.add-wrong {
+/* "Reply looks wrong?" and the switch between the link steps and the hand form are small,
+   so they do not pull the eye from the main button. */
+.add-wrong,
+.add-switch {
   justify-self: start;
   font-size: 0.75rem;
   text-align: left;

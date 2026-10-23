@@ -189,16 +189,18 @@ export function fixValue(key, value) {
   return { value: fixedText, fixed: fixedText !== value };
 }
 
+// The fields that hold one value from a fixed list.
+export const PICK_LISTS = { configuration: CONFIGURATIONS, listedBy: LISTED_BY, furnishing: FURNISHINGS, parking: YES_NO, lift: YES_NO };
+
 // What Save must refuse: a number column that holds no number, or a pick-list column with a value off its list.
 // values holds the review form, keyed by reply key. Returns one message per bad field.
 export function fieldProblems(values) {
-  const lists = { configuration: CONFIGURATIONS, listedBy: LISTED_BY, furnishing: FURNISHINGS, parking: YES_NO, lift: YES_NO };
   const problems = [];
   for (const [key, column] of Object.entries(REPLY_COLUMNS)) {
     const { value } = fixValue(key, values[key]);
     if (value === "") continue;
     if (NUMBER_KEYS.includes(key) && typeof value !== "number") problems.push(`${column} must be a number.`);
-    if (lists[key] && !lists[key].includes(value)) problems.push(`${column} must be one of: ${lists[key].join(", ")}.`);
+    if (PICK_LISTS[key] && !PICK_LISTS[key].includes(value)) problems.push(`${column} must be one of: ${PICK_LISTS[key].join(", ")}.`);
   }
   return problems;
 }
@@ -208,16 +210,40 @@ export function reviewFields(reply) {
   return Object.entries(REPLY_COLUMNS).map(([key, column]) => ({ key, column, ...fixValue(key, reply[key]) }));
 }
 
+// Columns a person can fill in the hand form that no Claude reply has. The sites hide phone numbers.
+export const HAND_COLUMNS = {
+  brokerPhone: "Broker phone",
+  ownerName: "Owner name",
+  ownerPhone: "Owner phone",
+};
+
+// The empty hand form, for a listing with no reply. The phone and owner fields come right after Broker name.
+export function blankFields() {
+  const fields = reviewFields({});
+  const at = fields.findIndex((f) => f.key === "brokerName") + 1;
+  fields.splice(at, 0, ...Object.entries(HAND_COLUMNS).map(([key, column]) => ({ key, column, value: "", fixed: false })));
+  return fields;
+}
+
+// What the hand form must have before Save. The society or the locality names the listing on its card,
+// and the geocoder needs one of them to find the map spot.
+export function handProblems(values) {
+  return toText(values.society) || toText(values.locality) ? [] : ["Fill in the society or the locality."];
+}
+
 // Pin precision for a spot the listing page gives. The page puts the pin on this home, so it is the building.
 export const PAGE_PIN_PRECISION = "building";
 
-// The new Tracker row, keyed by column. values holds the review form, keyed by reply key.
+// The new Tracker row, keyed by column. values holds the review form or the hand form, keyed by reply key.
 // The page fills Status, Listing link, Date added and Added by. The Apps Script fills the two worked-out columns.
 export function newListingRow({ id, values, link, addedBy, today, spot }) {
   const row = { "Listing id": id };
   for (const [key, column] of Object.entries(REPLY_COLUMNS)) {
     if (key === "lat" || key === "long") continue;
     row[column] = fixValue(key, values[key]).value;
+  }
+  for (const [key, column] of Object.entries(HAND_COLUMNS)) {
+    if (key in values) row[column] = toText(values[key]);
   }
   row.Status = "To call";
   row["Listing link"] = link;

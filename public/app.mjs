@@ -3,6 +3,7 @@
 // The Places tab lists the places, like an office, and adds one. Each place shows on the map as a black star.
 // "+ Add listing" opens the add steps in the left column: paste a link, ask Claude web, check the values and save.
 // When Claude web cannot read the page, the bookmarklet step reads it in the person's own browser.
+// A listing with no link, or one no Claude can read, goes in through the hand form.
 // A link already on the map blocks the add. The same society and Configuration only warns.
 // The Our take tab saves Status, ratings, pros and cons on each click. The Apps Script refuses a click on a stale cell.
 // The "All 40 fields" tab has the Edit form and Move pin. Both send the value the person saw, for the same clash check.
@@ -71,9 +72,12 @@ import {
   useSheetValue,
 } from "/lib/edit-listing.mjs";
 import {
+  PICK_LISTS,
+  blankFields,
   checkReply,
   dateText,
   fieldProblems,
+  handProblems,
   listingLink,
   localClaudePrompt,
   newListingRow,
@@ -1737,10 +1741,13 @@ const ADD_STEPS = {
   claude: { title: "Ask Claude web", body: claudeStep, summary: (add) => (add.bookmarklet ? "Moved to the bookmarklet" : societySummary(add)) },
   bookmarklet: { title: "Read the page with the bookmarklet", body: bookmarkletStep, summary: societySummary },
   review: { title: "Check and save", body: reviewStep },
+  hand: { title: "Fill in the listing", body: handStep },
 };
 
 // The bookmarklet step shows only once a reply fails or the person clicks "Reply looks wrong?".
+// The hand form is one step on its own.
 function stepKeys(add) {
+  if (add.hand) return ["hand"];
   return add.bookmarklet ? ["link", "claude", "bookmarklet", "review"] : ["link", "claude", "review"];
 }
 
@@ -1748,6 +1755,8 @@ function stepKeys(add) {
 // Configuration, and maybeOk is true once the person clicks "Save anyway".
 // bookmarklet is true once the bookmarklet step is open. failure says why Claude web's reply failed.
 // pageReplyText is Claude's reply in the bookmarklet step, and localText is the text for "Ask my local Claude".
+// hand is true while the hand form is open. handFields and handLink keep what the person typed there,
+// apart from the link steps, so a switch to the link steps and back loses nothing.
 function freshAdd() {
   return {
     step: 0,
@@ -1761,6 +1770,9 @@ function freshAdd() {
     sure: null,
     maybe: [],
     maybeOk: false,
+    hand: false,
+    handFields: blankFields(),
+    handLink: "",
     ...freshReading(),
   };
 }
@@ -1870,7 +1882,15 @@ function linkStep(add) {
   label.append(el("span", "", "Listing link"), input);
   const next = el("button", "add-primary", "Next");
   next.type = "submit";
-  form.append(label, next);
+  const byHand = el("button", "back-link add-switch", "No link? Fill in the listing by hand");
+  byHand.type = "button";
+  byHand.addEventListener("click", () => {
+    // A link typed here goes with the person, so the hand form can keep it.
+    if (input.value.trim() && !add.handLink.trim()) add.handLink = input.value.trim();
+    add.hand = true;
+    goToStep(0);
+  });
+  form.append(label, next, byHand);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const link = listingLink(input.value);
@@ -2108,6 +2128,46 @@ async function requestLocalClaude(add) {
 // Long text fields get a box with more room.
 const LONG_FIELDS = new Set(["otherDetails", "photos"]);
 
+// One field of the review form or the hand form. A field with a pick list gets a drop-down in the hand form.
+// The review form keeps a text box there, so a value Claude gave off the list stays in view to fix.
+function formField(add, field, { focus, pick }) {
+  const label = el("label", field.fixed ? "add-field add-field--fixed" : "add-field");
+  const list = pick ? PICK_LISTS[field.key] : null;
+  let input;
+  if (list) {
+    input = el("select");
+    input.append(new Option("Not given", ""), ...list.map((choice) => new Option(choice, choice)));
+  } else {
+    input = el(LONG_FIELDS.has(field.key) ? "textarea" : "input");
+    input.autocomplete = "off";
+  }
+  input.name = field.key;
+  input.value = String(field.value);
+  if (focus) input.dataset.focus = "";
+  // Keep what the person types, so a "Change" and back does not lose it.
+  input.addEventListener("input", () => {
+    field.value = input.value;
+    // "Save anyway" was for the old society and Configuration. A new one gets checked again.
+    if (field.key === "society" || field.key === "configuration") add.maybeOk = false;
+  });
+  label.append(el("span", "", field.column), input);
+  if (field.fixed) label.append(el("span", "add-fixed-note", "Fixed by the app"));
+  return label;
+}
+
+function saveButton(add, form) {
+  const save = el("button", "add-primary", add.busy ? "Saving…" : "Save");
+  save.type = "submit";
+  save.disabled = add.busy;
+  const note = el("p", "add-hint add-save-note");
+  note.setAttribute("aria-live", "polite");
+  form.append(save, note);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveListing(add);
+  });
+}
+
 function reviewStep(add) {
   const form = el("form", "add-form add-review");
   const fixedCount = add.fields.filter((f) => f.fixed).length;
@@ -2120,35 +2180,43 @@ function reviewStep(add) {
         : "Check each field. Nothing is saved until you click Save.",
     ),
   );
-  add.fields.forEach((field, index) => {
-    const label = el("label", field.fixed ? "add-field add-field--fixed" : "add-field");
-    const input = el(LONG_FIELDS.has(field.key) ? "textarea" : "input");
-    input.name = field.key;
-    input.value = String(field.value);
-    input.autocomplete = "off";
-    if (index === 0) input.dataset.focus = "";
-    // Keep what the person types, so a "Change" and back does not lose it.
-    input.addEventListener("input", () => {
-      field.value = input.value;
-      // "Save anyway" was for the old society and Configuration. A new one gets checked again.
-      if (field.key === "society" || field.key === "configuration") add.maybeOk = false;
-    });
-    label.append(el("span", "", field.column), input);
-    if (field.fixed) label.append(el("span", "add-fixed-note", "Fixed by the app"));
-    form.append(label);
-  });
+  add.fields.forEach((field, index) => form.append(formField(add, field, { focus: index === 0, pick: false })));
   form.append(el("p", "add-hint", "If Lat or Long is empty, the app finds the map spot from the society and the locality."));
-  const save = el("button", "add-primary", add.busy ? "Saving…" : "Save");
-  save.type = "submit";
-  save.disabled = add.busy;
-  const note = el("p", "add-hint add-save-note");
-  note.setAttribute("aria-live", "polite");
-  form.append(save, note);
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    saveListing(add);
-  });
+  saveButton(add, form);
   return [form, wrongReplyLink(add)];
+}
+
+// The hand form: every field a person can know, empty at start, and an optional link. No Claude step.
+function handStep(add) {
+  const back = el("button", "back-link add-switch", "Have a link? Let Claude read it");
+  back.type = "button";
+  back.disabled = add.busy;
+  back.addEventListener("click", () => {
+    add.hand = false;
+    goToStep(0);
+  });
+  const form = el("form", "add-form add-review");
+  form.append(el("p", "add-hint", "Fill in what you know. The society or the locality is needed. Nothing is saved until you click Save."));
+  const linkLabel = el("label", "add-field");
+  const link = el("input");
+  link.name = "link";
+  link.type = "url";
+  link.autocomplete = "off";
+  link.placeholder = "https://...";
+  link.value = add.handLink;
+  link.addEventListener("input", () => {
+    add.handLink = link.value;
+  });
+  linkLabel.append(el("span", "", "Listing link (optional)"), link);
+  // The app checks the link itself, so its message shows in place of the browser's.
+  form.noValidate = true;
+  form.append(linkLabel);
+  add.handFields.forEach((field, index) => form.append(formField(add, field, { focus: index === 0, pick: true })));
+  form.append(
+    el("p", "add-hint", "Lat and Long: right-click the spot in Google Maps to copy them. Leave them empty to find the spot from the society and the locality."),
+  );
+  saveButton(add, form);
+  return [back, form];
 }
 
 // A sure match blocks the add and has only "Open it". A maybe-match has "Open it" for each listing and "Save anyway".
@@ -2200,8 +2268,15 @@ async function spotFor(values) {
 
 // Nothing is written before this runs. The Listing id is made once, so a retried Save cannot add a second row.
 async function saveListing(add) {
-  const values = Object.fromEntries(add.fields.map((f) => [f.key, String(f.value)]));
+  const values = Object.fromEntries((add.hand ? add.handFields : add.fields).map((f) => [f.key, String(f.value)]));
   const problems = fieldProblems(values);
+  if (add.hand) {
+    // An empty link is fine. A listing with no link has no link key, so only the maybe-match runs for it.
+    const link = add.handLink.trim() ? listingLink(add.handLink) : "";
+    if (link === null) problems.unshift("Paste a link that starts with https://, or leave the link empty.");
+    else add.link = link;
+    problems.unshift(...handProblems(values));
+  }
   if (problems.length) {
     Object.assign(add, { error: problems.join(" "), sure: null, maybe: [] });
     renderAddSteps();

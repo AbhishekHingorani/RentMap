@@ -204,6 +204,13 @@ The add steps show in the left column, stacked. The current step is open. A done
   - The 99acres pick on the saved sample is 3,194 characters. It leaves out `haveModernLifts`, because the sample has `false` there while its description says it has lifts.
   - The server runs `claude` in the temp folder, so it reads no CLAUDE.md from the repo. It runs one call at a time and stops a call after 3 minutes.
 
+- **Built: add by hand.** "No link? Fill in the listing by hand" on the link step opens the hand form. It is one step, with no Claude call. The code is `blankFields`, `handProblems` and `HAND_COLUMNS` in `public/lib/add-listing.mjs`, and `handStep` in `public/app.mjs`.
+  - The form has every field of the review form, plus Broker phone, Owner name and Owner phone. Every field starts empty. Configuration, Listed by, Furnishing, Parking and Lift are drop-downs.
+  - The Listing link is optional. A link that is not http or https is refused. A given link gets the sure-match check at Save. A listing with no link gets only the maybe-match.
+  - Save needs the society or the locality. The same number and pick-list checks as the review form run.
+  - Typed Lat and Long get the building Pin precision. Empty ones go to the geocoder, like the review form.
+  - "Have a link? Let Claude read it" goes back to the link step. Each path keeps what the person typed.
+
 ### Claude's reply
 
 Claude replies with one JSON object in a ```json block. The keys are fixed. The app maps each key to its Tracker column. A value the page does not show is `null`.
