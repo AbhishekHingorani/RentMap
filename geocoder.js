@@ -8,6 +8,8 @@ const USER_AGENT = "rental-map/1.0 (a small group's rental hunt map, run on loca
 
 // The Nominatim policy allows 1 request a second for the whole app.
 const GAP_MS = 1000;
+// A stalled request would hold up the whole queue, so each one gives up after this long.
+const TIMEOUT_MS = 15000;
 
 // A city's own box is its boundary. Suburbs on the edge (like Sarjapur Road) are often outside it,
 // so the viewbox is the city box grown by this much on each side, in degrees (about 11 km).
@@ -20,7 +22,8 @@ const PRECISION_BY_ADDRESSTYPE = {
   residential: "society",
   neighbourhood: "society",
   quarter: "society",
-  road: "society",
+  // A road can run for kilometres, so a road hit is only as exact as a locality.
+  road: "locality",
   suburb: "locality",
   city_district: "locality",
   village: "locality",
@@ -29,10 +32,12 @@ const PRECISION_BY_ADDRESSTYPE = {
 };
 const TOO_ROUGH_ADDRESSTYPES = ["city", "town", "municipality", "county", "state_district", "state", "country"];
 
-// place_rank: 30 is a building or a point, about 24 a residential area, about 19 a suburb, 16 or less a city.
+// place_rank: 30 is a building or a point, 26 and 27 a street, about 24 a residential area,
+// about 19 a suburb, 16 or less a city.
 function precisionFromRank(rank) {
   if (!Number.isFinite(rank)) return null;
   if (rank >= 28) return "building";
+  if (rank >= 26) return "locality";
   if (rank >= 22) return "society";
   if (rank >= 17) return "locality";
   return null;
@@ -44,14 +49,24 @@ function nominatimPrecision(hit) {
 }
 
 // Photon has no place_rank or addresstype. Its "type" is the same idea in fewer steps.
-const PRECISION_BY_PHOTON_TYPE = { house: "building", street: "society", locality: "locality", district: "locality" };
+const PRECISION_BY_PHOTON_TYPE = { house: "building", street: "locality", locality: "locality", district: "locality" };
 
 function inBox(box, lat, long) {
   return lat >= box.south && lat <= box.north && long >= box.west && long <= box.east;
 }
 
+// Nominatim's viewbox is lon1,lat1,lon2,lat2. Photon's bbox is minLon,minLat,maxLon,maxLat.
 function viewbox(box) {
   return `${box.west},${box.north},${box.east},${box.south}`;
+}
+
+function photonBbox(box) {
+  return `${box.west},${box.south},${box.east},${box.north}`;
+}
+
+// "Koramangala, Bangalore" stays as it is, so the city is not named twice.
+function withCity(text, city) {
+  return text.toLowerCase().endsWith(city.toLowerCase()) ? text : `${text}, ${city}`;
 }
 
 function clean(text) {
@@ -67,7 +82,10 @@ function createQueue({ fetch, wait, now }) {
       const gap = lastStart + GAP_MS - now();
       if (gap > 0) await wait(gap);
       lastStart = now();
-      const res = await fetch(url, { headers: { "User-Agent": USER_AGENT, Accept: "application/json" } });
+      const res = await fetch(url, {
+        headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
       if (!res.ok) throw new Error(`${new URL(url).host} answered HTTP ${res.status}`);
       return res.json();
     });
@@ -130,14 +148,14 @@ function createGeocoder({
   async function askPhoton(q, area) {
     const url = new URL(PHOTON);
     const { box } = area;
-    // Photon names the same filters countrycode and bbox. bbox is minLon,minLat,maxLon,maxLat.
+    // Photon names the same filters countrycode and bbox.
     url.search = new URLSearchParams({
       q,
       lat: String(area.center[0]),
       lon: String(area.center[1]),
       limit: "5",
       countrycode: "in",
-      bbox: `${box.west},${box.south},${box.east},${box.north}`,
+      bbox: photonBbox(box),
     });
     const reply = await send(url.href);
     for (const feature of reply.features || []) {
@@ -150,18 +168,27 @@ function createGeocoder({
 
   // Query order, stop at the first good hit: society with city, locality with city, then Photon.
   // Returns { lat, long, precision }, or null when no query finds the spot.
+  // A Nominatim error, like HTTP 429, does not stop the lookup. Photon still gets its turn.
   async function geocode({ society, locality, city }) {
     const cityName = clean(city);
-    if (!cityName) throw new Error("No City in the Settings tab. Add a City row, like Bangalore.");
+    if (!cityName) throw new Error("No City in the Settings tab. Add a City row with the city name.");
     const parts = [clean(society), clean(locality)];
     if (!parts[0] && !parts[1]) throw new Error("Nothing to look up. Give a society, a locality or an address.");
     const area = await cityArea(cityName);
+    let nominatimError = null;
     for (const part of parts) {
       if (!part) continue;
-      const hit = await askNominatim(`${part}, ${cityName}`, area);
-      if (hit) return hit;
+      try {
+        const hit = await askNominatim(withCity(part, cityName), area);
+        if (hit) return hit;
+      } catch (err) {
+        nominatimError = err;
+      }
     }
-    return askPhoton([...parts.filter(Boolean), cityName].join(", "), area);
+    const hit = await askPhoton(withCity(parts.filter(Boolean).join(", "), cityName), area);
+    // No spot plus a Nominatim error means the miss may be the error, so say so.
+    if (!hit && nominatimError) throw nominatimError;
+    return hit;
   }
 
   return { geocode };

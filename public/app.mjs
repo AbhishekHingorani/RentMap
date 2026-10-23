@@ -76,10 +76,10 @@ async function personName() {
 
 // --- Talking to the Apps Script ---
 
-let configLoad = null;
+let configPromise = null;
 function appConfig() {
-  configLoad ??= fetch("/api/config").then((res) => res.json());
-  return configLoad;
+  configPromise ??= fetch("/api/config").then((res) => res.json());
+  return configPromise;
 }
 
 // Sends one call to the Apps Script and returns its JSON reply, which may say { ok: false }.
@@ -118,7 +118,12 @@ async function geocode(query) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(query),
   });
-  const reply = await res.json();
+  let reply;
+  try {
+    reply = await res.json();
+  } catch {
+    throw new Error(`The local web server answered HTTP ${res.status}.`);
+  }
   if (!reply.ok) throw new Error(reply.error);
   return reply.spot;
 }
@@ -543,9 +548,15 @@ function closeDetails() {
 
 // --- Places ---
 
-function placeIcon(place) {
-  const label = el("span", "place-pin");
+// A black star and the place name, on the map and in the place list.
+function placeLabel(tag, className, place) {
+  const label = el(tag, className);
   label.append(el("span", "place-star", "★"), el("span", "", place.name || NOT_GIVEN));
+  return label;
+}
+
+function placeIcon(place) {
+  const label = placeLabel("span", "place-pin", place);
   label.title = place.address;
   return L.divIcon({ className: "pin-anchor", html: label.outerHTML, iconSize: null });
 }
@@ -565,8 +576,7 @@ function renderPlaces() {
     ...state.places.map((place) => {
       const item = el("li", "place");
       // A place with a map spot is a button that shows its star on the map.
-      const label = el(place.spot ? "button" : "span", "place-open");
-      label.append(el("span", "place-star", "★"), el("span", "", place.name || NOT_GIVEN));
+      const label = placeLabel(place.spot ? "button" : "span", "place-open", place);
       if (place.spot) {
         label.type = "button";
         label.addEventListener("click", () => map.setView(place.spot, Math.max(map.getZoom(), 14)));
@@ -600,7 +610,7 @@ async function addPlace(event) {
     return;
   }
   if (!state.city) {
-    setNote("The Settings tab has no City. Add a City row, like Bangalore, then reload.", true);
+    setNote("The Settings tab has no City. Add a City row with the city name, then reload.", true);
     return;
   }
   const button = placeFormEl.querySelector("button");
@@ -647,14 +657,23 @@ function pickSideTab(key, focus) {
 }
 
 function setUpSideTabs() {
-  for (const tab of sideTabEls) tab.addEventListener("click", () => pickSideTab(tab.dataset.tab, false));
+  // Closing the details moves focus to a card, so a click puts focus back on the tab.
+  for (const tab of sideTabEls) tab.addEventListener("click", () => pickSideTab(tab.dataset.tab, true));
   document.getElementById("side-tabs").addEventListener("keydown", (event) => {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
     const other = sideTabEls.find((tab) => tab.getAttribute("aria-selected") !== "true");
     pickSideTab(other.dataset.tab, true);
     event.preventDefault();
   });
+}
+
+// With the geocoder off in config.json, the app cannot find a spot, so the form says so up front.
+async function setUpPlaceForm() {
   placeFormEl.addEventListener("submit", addPlace);
+  if ((await appConfig()).geocoding === false) {
+    placeFormEl.querySelector("button").disabled = true;
+    setNote("The geocoder is off in config.json, so a new place cannot get a map spot.", true);
+  }
 }
 
 async function start() {
@@ -675,6 +694,7 @@ async function start() {
     state.filters = startFilters(state.budget);
     setUpFilters();
     setUpSideTabs();
+    setUpPlaceForm();
     renderPlaces();
     renderList();
     const spots = [...state.listings, ...state.places].filter((l) => l.spot).map((l) => l.spot);

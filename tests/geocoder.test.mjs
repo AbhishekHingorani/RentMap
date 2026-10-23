@@ -26,8 +26,10 @@ function setUp(answer) {
     },
     fetch: async (url, options) => {
       const parsed = new URL(url);
-      calls.push({ url: parsed, headers: options.headers, at: clock });
-      return { ok: true, json: async () => answer(parsed) };
+      calls.push({ url: parsed, headers: options.headers, signal: options.signal, at: clock });
+      const reply = answer(parsed);
+      if (reply === 429) return { ok: false, status: 429 };
+      return { ok: true, json: async () => reply };
     },
   });
   return { geocoder, calls };
@@ -101,6 +103,9 @@ test("Pin precision comes from addresstype, or from place_rank when addresstype 
     [{ addresstype: "amenity", place_rank: 30 }, "building"],
     [{ addresstype: "something", place_rank: 24 }, "society"],
     [{ addresstype: "something", place_rank: 18 }, "locality"],
+    // A street can run for kilometres, so it is only as exact as a locality.
+    [{ addresstype: "road", place_rank: 26 }, "locality"],
+    [{ addresstype: "something", place_rank: 27 }, "locality"],
   ];
   for (const [hit, precision] of cases) {
     const { geocoder } = setUp((url) => (isCityLookup(url) ? [CITY_HIT] : [{ lat: "12.9", lon: "77.6", ...hit }]));
@@ -139,7 +144,11 @@ test("all requests go through one queue, at least 1 second apart, with the app's
   for (let i = 1; i < calls.length; i++) {
     assert.ok(calls[i].at - calls[i - 1].at >= GAP_MS, `request ${i} came ${calls[i].at - calls[i - 1].at} ms after the one before`);
   }
-  for (const call of calls) assert.equal(call.headers["User-Agent"], USER_AGENT);
+  for (const call of calls) {
+    assert.equal(call.headers["User-Agent"], USER_AGENT);
+    // Each request has a timeout, so one stalled call cannot hold up the queue.
+    assert.ok(call.signal instanceof AbortSignal);
+  }
   assert.match(USER_AGENT, /rental-map/);
 });
 
@@ -162,4 +171,28 @@ test("a city that Nominatim cannot find is an error, and the next call asks agai
   await assert.rejects(geocoder.geocode({ society: "X", city: "Nowhere" }), /Could not find the city "Nowhere"/);
   await assert.rejects(geocoder.geocode({ society: "X", city: "Nowhere" }), /Could not find the city/);
   assert.equal(calls.length, 2);
+});
+
+test("a Nominatim error does not stop the lookup, and Photon still gets its turn", async () => {
+  const { geocoder } = setUp((url) => {
+    if (isCityLookup(url)) return [CITY_HIT];
+    if (url.host.startsWith("photon")) {
+      return { features: [{ geometry: { coordinates: [77.62, 12.93] }, properties: { type: "locality" } }] };
+    }
+    return 429;
+  });
+  const spot = await geocoder.geocode({ society: "Koramangala", city: "Bangalore" });
+  assert.deepEqual(spot, { lat: 12.93, long: 77.62, precision: "locality" });
+});
+
+test("when Nominatim failed and Photon finds nothing, the Nominatim error comes back", async () => {
+  const { geocoder } = setUp((url) => (isCityLookup(url) ? [CITY_HIT] : url.host.startsWith("photon") ? { features: [] } : 429));
+  await assert.rejects(geocoder.geocode({ society: "Koramangala", city: "Bangalore" }), /HTTP 429/);
+});
+
+test("an address that already ends with the city does not name it twice", async () => {
+  const { geocoder, calls } = setUp((url) => (isCityLookup(url) ? [CITY_HIT] : url.host.startsWith("photon") ? { features: [] } : []));
+  await geocoder.geocode({ society: "100 Feet Road, Indiranagar, bangalore", city: "Bangalore" });
+  assert.equal(calls[1].url.searchParams.get("q"), "100 Feet Road, Indiranagar, bangalore");
+  assert.equal(calls[2].url.searchParams.get("q"), "100 Feet Road, Indiranagar, bangalore");
 });

@@ -71,16 +71,16 @@ function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    // A body that is too big is read to the end and dropped, so the reply still reaches the page.
     req.on("data", (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new Error("The request is too big."));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
+      if (size <= MAX_BODY_BYTES) chunks.push(chunk);
     });
     req.on("end", () => {
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("The request is too big."));
+        return;
+      }
       let body;
       try {
         body = JSON.parse(Buffer.concat(chunks).toString("utf8"));

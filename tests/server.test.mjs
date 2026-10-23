@@ -100,11 +100,14 @@ test("geocoding false in the config turns the geocoder off", async () => {
   assert.equal((await (await fetch(`${offBase}/api/config`)).json()).geocoding, false);
 });
 
-test("a POST that is not application/json gets 415, and bad JSON gets 400", async () => {
+test("a POST that is not application/json gets 415, and bad JSON or a big body gets 400", async () => {
   const plain = await fetch(`${base}/api/geocode`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: "{}" });
   assert.equal(plain.status, 415);
   const bad = await fetch(`${base}/api/geocode`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{nope" });
   assert.equal(bad.status, 400);
+  const big = await postJson(`${base}/api/geocode`, { society: "x".repeat(20000), city: "Bangalore" });
+  assert.equal(big.status, 400);
+  assert.deepEqual(await big.json(), { ok: false, error: "The request is too big." });
   const other = await postJson(`${base}/index.html`, {});
   assert.equal(other.status, 405);
 });
