@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   REPLY_COLUMNS,
   dateText,
+  fieldProblems,
   fixValue,
   listingLink,
   newListingRow,
@@ -128,6 +129,21 @@ test("a value in the right format is not marked", () => {
 test("a value the app cannot fix stays as it came, unmarked, for the person to fix", () => {
   assert.deepEqual(fixValue("configuration", "Studio"), { value: "Studio", fixed: false });
   assert.deepEqual(fixValue("rent", "ask the owner"), { value: "ask the owner", fixed: false });
+});
+
+test("short money like 38k or 1.17 lakh is fixed", () => {
+  assert.deepEqual(fixValue("rent", "38k"), { value: 38000, fixed: true });
+  assert.deepEqual(fixValue("deposit", "₹1.17 lakh"), { value: 117000, fixed: true });
+  assert.deepEqual(fixValue("deposit", "2 lakhs"), { value: 200000, fixed: true });
+  assert.deepEqual(fixValue("rent", "38 apples"), { value: "38 apples", fixed: false });
+});
+
+test("Save is refused for a value the app cannot fix", () => {
+  assert.deepEqual(fieldProblems({ rent: "on request", configuration: "Studio", parking: "Yes", lift: "" }), [
+    "Configuration must be one of: 1RK, 1BHK, 2BHK, 3BHK, 4BHK+.",
+    "Rent (₹/month) must be a number.",
+  ]);
+  assert.deepEqual(fieldProblems({ rent: "38,999", configuration: "2 bhk", society: "Anything" }), []);
 });
 
 test("site photo links are kept as they are, split by ;", () => {

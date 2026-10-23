@@ -209,7 +209,7 @@ function addListing(listing) {
 // Total monthly cost is rent plus maintenance, or rent alone when maintenance is empty.
 // Overall rating is the average of the filled ratings only, and empty when none is filled.
 function writeWorkedOut(sheet, rowNumber, headers) {
-  var cells = sheet.getDataRange().getValues()[rowNumber - 1];
+  var cells = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
   var byHeader = {};
   headers.forEach(function (header, c) {
     if (header) byHeader[header] = cells[c] === undefined ? "" : cells[c];
@@ -239,6 +239,7 @@ function writeWorkedOut(sheet, rowNumber, headers) {
 }
 
 // A hand-typed cell can hold "38,999" or "₹38,999" as text. An empty cell is null.
+// Apps Script cannot import, so this copies toNumber in public/lib/listings.mjs. Keep the two the same.
 function toNumber(value) {
   if (typeof value === "number") return isFinite(value) ? value : null;
   if (typeof value !== "string") return null;

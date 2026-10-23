@@ -20,6 +20,11 @@ function fakeSheet(name, cells = []) {
     },
     getRange(row, col, numRows, numCols) {
       return {
+        getValues() {
+          return Array.from({ length: numRows }, (_, r) =>
+            Array.from({ length: numCols }, (_, c) => cells[row - 1 + r]?.[col - 1 + c] ?? ""),
+          );
+        },
         setValues(values) {
           assert.equal(values.length, numRows);
           for (let r = 0; r < numRows; r++) {

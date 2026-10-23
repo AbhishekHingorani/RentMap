@@ -192,7 +192,8 @@ The add steps show in the left column, stacked. The current step is open. A done
 
 - **Built (ticket 05).** The page code is `public/lib/add-listing.mjs` and the add steps in `public/app.mjs`. The Apps Script action is `addListing`.
   - The step 3 failure shows a message for now. Ticket 07 adds the bookmarklet step.
-  - The review form fixes Configuration ("2 BHK" to 2BHK, "5 BHK" to 4BHK+), money and other numbers ("38,999" to 38999), Listed by, Furnishing, Parking and Lift. A value it cannot fix stays as it came, unmarked.
+  - The review form fixes Configuration ("2 BHK" to 2BHK, "5 BHK" to 4BHK+), money and other numbers ("38,999" to 38999, "38k" to 38000, "1.17 lakh" to 117000), Listed by, Furnishing, Parking and Lift. A value it cannot fix stays as it came, unmarked, and Save refuses it with a message that names the column.
+  - The Listing id stays the same when the person changes the reply. It is new only for a new link.
   - When the reply gives lat and long, the Pin precision is building, because the listing page puts the pin on the home.
   - The Listing id is `L-` plus a random UUID. Date added is the person's local date, as YYYY-MM-DD.
   - A listing with no map spot still saves. Its card says "No map spot yet", and its details say why.

@@ -28,6 +28,7 @@ import {
 import { cityFrom, distancesFor, placesFromRows } from "/lib/places.mjs";
 import {
   dateText,
+  fieldProblems,
   listingLink,
   newListingRow,
   pageSpot,
@@ -718,6 +719,8 @@ function renderAddSteps() {
         const change = el("button", "back-link", "Change");
         change.type = "button";
         change.setAttribute("aria-label", `Change: ${step.title}`);
+        // A save in flight keeps the steps as they are, so its result has somewhere to show.
+        change.disabled = add.busy;
         change.addEventListener("click", () => goToStep(index));
         line.append(el("span", "add-step-summary", step.summary(add)), change);
         item.append(line);
@@ -736,6 +739,7 @@ function renderAddSteps() {
       return item;
     }),
   );
+  document.getElementById("add-close").disabled = add.busy;
   addStepsEl.querySelector(".add-step--open [data-focus]")?.focus();
 }
 
@@ -820,7 +824,8 @@ function claudeStep(add) {
       renderAddSteps();
       return;
     }
-    Object.assign(add, { fields: reviewFields(result.reply), id: null, spot: undefined });
+    // The Listing id stays. A Save that failed may still have written the row, and the next Save must find it.
+    Object.assign(add, { fields: reviewFields(result.reply), spot: undefined });
     goToStep(2);
   });
 
@@ -857,7 +862,7 @@ function reviewStep(add) {
     if (field.fixed) label.append(el("span", "add-fixed-note", "Fixed by the app"));
     form.append(label);
   });
-  form.append(el("p", "add-hint", "Lat and Long empty: the app finds the map spot from the society and the locality."));
+  form.append(el("p", "add-hint", "If Lat or Long is empty, the app finds the map spot from the society and the locality."));
   const save = el("button", "add-primary", add.busy ? "Saving…" : "Save");
   save.type = "submit";
   save.disabled = add.busy;
@@ -892,11 +897,18 @@ async function spotFor(values) {
 // Nothing is written before this runs. The Listing id is made once, so a retried Save cannot add a second row.
 async function saveListing(add) {
   const values = Object.fromEntries(add.fields.map((f) => [f.key, String(f.value)]));
+  const problems = fieldProblems(values);
+  if (problems.length) {
+    add.error = problems.join(" ");
+    renderAddSteps();
+    return;
+  }
   add.busy = true;
   add.error = "";
   renderAddSteps();
   const say = (text) => {
-    addStepsEl.querySelector(".add-save-note").textContent = text;
+    const note = addStepsEl.querySelector(".add-save-note");
+    if (note) note.textContent = text;
   };
   try {
     add.id ??= `L-${crypto.randomUUID()}`;
@@ -931,7 +943,7 @@ async function saveListing(add) {
   } catch (err) {
     add.busy = false;
     add.error = err.message;
-    renderAddSteps();
+    if (state.add === add) renderAddSteps();
   }
 }
 

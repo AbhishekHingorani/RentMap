@@ -86,13 +86,22 @@ function isEmpty(value) {
   return value === null || value === undefined || toText(value) === "";
 }
 
-// Letters and digits only, so "Semi furnished" and "semi-furnished" compare the same.
+// Lowercase letters, digits and "+" only, so "Semi furnished" and "semi-furnished" compare the same.
 function squash(text) {
   return toText(text).toLowerCase().replace(/[^a-z0-9+]/g, "");
 }
 
 function pickFrom(choices, value) {
   return choices.find((choice) => squash(choice) === squash(value)) ?? null;
+}
+
+// Indian listings often write money short, like "38k" or "1.17 lakh".
+const MONEY_UNITS = { k: 1000, thousand: 1000, l: 100000, lac: 100000, lakh: 100000, lakhs: 100000 };
+
+function shortMoney(value) {
+  const match = toText(value).toLowerCase().replace(/[₹,\s]/g, "").match(/^(\d+(?:\.\d+)?)([a-z]+)$/);
+  if (!match || !Object.hasOwn(MONEY_UNITS, match[2])) return null;
+  return Math.round(Number(match[1]) * MONEY_UNITS[match[2]]);
 }
 
 function configurationOf(value) {
@@ -134,7 +143,7 @@ export function fixValue(key, value) {
   }
   if (NUMBER_KEYS.includes(key)) {
     if (typeof value === "number") return { value: Number.isFinite(value) ? value : "", fixed: false };
-    const n = toNumber(value);
+    const n = toNumber(value) ?? shortMoney(value);
     return n === null ? { value: toText(value), fixed: false } : { value: n, fixed: true };
   }
   const text = toText(value);
@@ -142,6 +151,20 @@ export function fixValue(key, value) {
   const fixedText = fix ? fix(value) : null;
   if (fixedText === null) return { value: text, fixed: typeof value !== "string" };
   return { value: fixedText, fixed: fixedText !== value };
+}
+
+// What Save must refuse: a number column that holds no number, or a pick-list column with a value off its list.
+// values holds the review form, keyed by reply key. Returns one message per bad field.
+export function fieldProblems(values) {
+  const lists = { configuration: CONFIGURATIONS, listedBy: LISTED_BY, furnishing: FURNISHINGS, parking: YES_NO, lift: YES_NO };
+  const problems = [];
+  for (const [key, column] of Object.entries(REPLY_COLUMNS)) {
+    const { value } = fixValue(key, values[key]);
+    if (value === "") continue;
+    if (NUMBER_KEYS.includes(key) && typeof value !== "number") problems.push(`${column} must be a number.`);
+    if (lists[key] && !lists[key].includes(value)) problems.push(`${column} must be one of: ${lists[key].join(", ")}.`);
+  }
+  return problems;
 }
 
 // The review form: one field per reply key, with the fixed value and a yellow mark when it changed.
