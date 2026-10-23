@@ -13,12 +13,16 @@ export function toNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function toText(value) {
+export function toText(value) {
   return value === null || value === undefined ? "" : String(value).trim();
 }
 
 export function formatRupees(amount) {
   return amount === null ? NOT_GIVEN : "₹" + rupeeDigits.format(amount);
+}
+
+export function formatRating(rating) {
+  return rating === null ? NOT_GIVEN : `${Math.round(rating * 10) / 10} / 5`;
 }
 
 // The sheet holds Total monthly cost once the Apps Script writes the listing.
@@ -42,10 +46,15 @@ export function listingsFromRows(rows) {
       configuration: toText(row.Configuration),
       status: toText(row.Status),
       rent,
+      maintenance: toNumber(row["Maintenance (₹/month)"]),
       totalCost: totalCostOf(row, rent),
       overallRating: toNumber(row["Overall rating"]),
       photo: toText(row.Photos).split(";").map((s) => s.trim()).find(Boolean) ?? "",
       spot: lat !== null && long !== null ? [lat, long] : null,
+      precision: toText(row["Pin precision"]).toLowerCase(),
+      link: toText(row["Listing link"]),
+      // The details view shows every column, so keep the sheet row as it came.
+      row,
     };
   });
 }

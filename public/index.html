@@ -25,8 +25,37 @@
           <h1>Rental map</h1>
           <p class="who" id="who" hidden></p>
         </header>
-        <p class="list-meta" id="list-meta" aria-live="polite">Loading the sheet…</p>
-        <ol class="list" id="list"></ol>
+        <div class="list-view" id="list-view">
+          <form class="filters" id="filters" aria-label="Filters" hidden>
+            <div class="filters-row">
+              <label class="filter-max">
+                <span>Max ₹/month</span>
+                <input id="filter-max" type="number" min="0" step="1000" inputmode="numeric" placeholder="No cap" />
+              </label>
+              <label class="filter-search">
+                <span>Search</span>
+                <input id="filter-search" type="search" placeholder="Society or locality" autocomplete="off" />
+              </label>
+            </div>
+            <fieldset class="filter-configs">
+              <legend>Configuration</legend>
+              <div id="filter-configs"></div>
+            </fieldset>
+            <div class="filters-row">
+              <label class="switch">
+                <input id="filter-shortlisted" type="checkbox" role="switch" />
+                <span>Shortlisted only</span>
+              </label>
+              <label class="switch">
+                <input id="filter-rejected" type="checkbox" role="switch" />
+                <span>Show rejected</span>
+              </label>
+            </div>
+          </form>
+          <p class="list-meta" id="list-meta" aria-live="polite">Loading the sheet…</p>
+          <ol class="list" id="list"></ol>
+        </div>
+        <article class="details" id="details" hidden></article>
       </section>
       <div class="map" id="map" aria-label="Map of listings"></div>
     </main>

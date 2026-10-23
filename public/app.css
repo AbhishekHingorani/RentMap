@@ -131,6 +131,7 @@ body {
 }
 
 .card {
+  position: relative;
   display: grid;
   grid-template-columns: 6.5rem 1fr;
   gap: 0.875rem;
@@ -159,15 +160,46 @@ body {
   object-fit: cover;
 }
 
-.card-photo-none {
+.photo-none {
   padding: 0.25rem;
   font-size: 0.75rem;
   text-align: center;
   color: var(--ink-soft);
 }
 
+.card:hover {
+  background: var(--surface);
+}
+
 .card-body {
   min-width: 0;
+}
+
+/* The society name is a button, and its ::after covers the card, so the whole card opens the details. */
+.card-open {
+  padding: 0;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.card-open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+}
+
+.card-open:focus-visible {
+  outline: none;
+}
+
+.card-open:focus-visible::after {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 
 .card-top {
@@ -230,6 +262,18 @@ body {
 .status--shortlisted { background: var(--shortlisted); color: var(--shortlisted-ink); }
 .status--rejected { background: var(--rejected); color: var(--rejected-ink); }
 .status--unknown { background: var(--unknown); color: var(--unknown-ink); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* Pin of the open listing: lifted and outlined so it stands out from the rest. */
+.pin.pin--picked {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+  transform: translateX(-50%) scale(1.08);
+}
+
+.rough-pin {
+  stroke: var(--ink);
+  fill: var(--ink);
+}
 
 .map {
   min-height: 0;
@@ -339,4 +383,404 @@ body {
 
 .name-box button:hover {
   background: oklch(36% 0.05 165);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.list-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Filter bar */
+.filters {
+  display: grid;
+  gap: 0.625rem;
+  padding: 0.875rem 1.25rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.8125rem;
+}
+
+.filters-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.filter-max,
+.filter-search {
+  display: grid;
+  gap: 0.1875rem;
+  font-weight: 500;
+}
+
+.filter-max {
+  flex: 0 0 8.5rem;
+}
+
+.filter-search {
+  flex: 1;
+}
+
+.filters input[type="number"],
+.filters input[type="search"] {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid oklch(70% 0.015 175);
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.filter-configs {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.filter-configs legend {
+  margin-bottom: 0.25rem;
+  padding: 0;
+  font-weight: 500;
+}
+
+.filter-configs > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+/* Each Configuration box reads as a chip that is filled when ticked. */
+.filter-config {
+  position: relative;
+  cursor: pointer;
+}
+
+.filter-config input {
+  position: absolute;
+  opacity: 0;
+}
+
+.filter-config span {
+  display: inline-block;
+  padding: 0.1875rem 0.625rem;
+  border: 1px solid oklch(70% 0.015 175);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  background: var(--surface);
+}
+
+.filter-config input:checked + span {
+  border-color: var(--shell);
+  color: var(--shell-ink);
+  background: var(--shell);
+}
+
+.filter-config input:focus-visible + span {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.switch input {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 2rem;
+  height: 1.125rem;
+  margin: 0;
+  border-radius: 999px;
+  background: oklch(78% 0.015 175);
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+
+.switch input::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(1.125rem - 4px);
+  height: calc(1.125rem - 4px);
+  border-radius: 50%;
+  background: var(--surface);
+  transition: transform 150ms ease-out;
+}
+
+.switch input:checked {
+  background: var(--shell);
+}
+
+.switch input:checked::before {
+  transform: translateX(0.875rem);
+}
+
+/* Listing details */
+.details {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem 1.25rem 2rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.back-link {
+  padding: 0.25rem 0;
+  border: 0;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--focus);
+  background: none;
+  cursor: pointer;
+}
+
+.back-link:hover {
+  text-decoration: underline;
+}
+
+.details-head {
+  padding: 0.5rem 0 1rem;
+}
+
+.details-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.details-society {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.details-top .status {
+  margin-top: 0.25rem;
+}
+
+.details-locality,
+.details-facts {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.details-cost {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.125rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.over-budget {
+  padding: 0.0625rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: oklch(99% 0 0);
+  background: var(--error);
+}
+
+.details-facts {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.details-link {
+  display: inline-block;
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--focus);
+}
+
+.tab-bar {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  margin-bottom: -1px;
+  padding: 0.5rem 0.625rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  background: none;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--shell);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.tab-panel {
+  padding-top: 0.5rem;
+}
+
+.tab-panel:focus-visible {
+  outline-offset: 4px;
+}
+
+.details-part {
+  padding: 0.75rem 0;
+}
+
+.details-part + .details-part {
+  border-top: 1px solid var(--line);
+}
+
+.details-part h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: minmax(8rem, 45%) 1fr;
+  gap: 0.375rem 1rem;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.fields dt {
+  color: var(--ink-soft);
+}
+
+.fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.not-given {
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.photos {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.photos > p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.photo {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 4px;
+  background: oklch(93% 0.012 175);
+}
+
+.photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.details-status {
+  margin: 0;
+}
+
+.items {
+  font-size: 0.875rem;
+}
+
+.items + .items {
+  margin-top: 0.75rem;
+}
+
+.items h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.items ul {
+  margin: 0;
+  padding-left: 1.125rem;
+}
+
+.items p {
+  margin: 0;
+}
+
+.notes {
+  margin: 0;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.all-fields {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.all-fields th,
+.all-fields td {
+  padding: 0.375rem 0.5rem 0.375rem 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.all-fields thead th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.all-fields tbody th {
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.all-fields td:last-child {
+  overflow-wrap: anywhere;
+}
+
+.all-fields-number {
+  width: 2rem;
+  color: var(--ink-soft);
 }
