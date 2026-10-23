@@ -55,6 +55,14 @@ With Claude Code on your computer, paste the prompt into the "Ask my local Claud
 
 A link that is already on the map stops the add at step 1, with an "Open it" button. For 99acres, two links with the same `spid-` part count as the same listing. At Save, a saved listing with the same society and Configuration gets a warning. Click "Save anyway" to add it all the same.
 
+## Our take
+
+Open a listing and pick the Our take tab. A click on a Status or a rating saves it at once. A click on the picked rating clears it. Pros and cons have a box to add one and a "×" to remove one.
+
+If someone changed the same cell first, the sheet keeps their value. The tab shows it, with a message like "Someone changed Status to Visited. Your change was not saved."
+
+After you paste a new `Code.gs`, edit the deployment and pick a new version, or the `getListing`, `saveCells` and `editList` calls fail with "unknown action".
+
 ## Test with a few rows
 
 Open `apps-script/test-rows.tsv`, copy all 3 lines, click cell A2 of the Tracker tab, and paste. Each row has Lat and Long, so each one gets a pin. Reload the page.

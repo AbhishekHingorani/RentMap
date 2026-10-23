@@ -292,6 +292,17 @@ Example: Asha changes Rent to ₹40,000. Ravi opened the same listing 10 minutes
 - **Refused click or pin drag.** The control shows the sheet value. A dragged pin goes back to the sheet spot. A message says, for example, "Someone changed Status to Visited. Your change was not saved." The app does not retry.
 - **Row gone.** If the sheet owner deleted the row by hand, the save is refused. The app says "This listing is no longer in the sheet" and removes its pin.
 
+- **Built (ticket 08).** The page code is `public/lib/our-take.mjs` and the Our take tab in `public/app.mjs`. The Apps Script actions are `getListing`, `saveCells` and `editList`.
+  - `saveCells` takes `cells: [{ column, old, new }]`. A clash replies `{ "ok": false, "error": "clash", "clashes": [<columns>], "listing": <sheet row> }`. A gone row replies `{ "ok": false, "error": "row_gone" }`.
+  - The clash check compares cells as trimmed text. A date cell compares as the ISO text that `load` sends.
+  - `saveCells` refuses Listing id, Total monthly cost, Overall rating and the 4 list cells. It refuses a Status outside the 5, and a rating that is not a whole number from 1 to 5 or empty.
+  - `editList` takes Pros, Cons and Photos. An item cannot hold a ";". It refuses Notes until the owner decides how notes are split.
+  - A click on the picked rating clears it.
+  - A failed call may hide a write that worked, so the app reads the row again and shows what the sheet holds.
+  - A row with no Listing id cannot be saved. Its Our take tab says so.
+  - The yellow "Your filters hide this listing on the map." note shows on any listing details that the filters hide.
+  - **Not built: notes.** Adding a note, the name and date before it, and the "×" with "Delete this note?" wait for the gap "How notes are split inside the Notes cell". The tab shows the Notes cell as plain text.
+
 ## Map spots
 
 Source: [Find a free way to turn an Indian address into a map spot](.scratch/rental-map/issues/05-geocoding.md). Details: `.scratch/rental-map/research/geocoding.md`.

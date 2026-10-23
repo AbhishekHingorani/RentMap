@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { TRACKER_COLUMNS, PLACES_COLUMNS, SETTINGS_COLUMNS } from "../public/lib/columns.mjs";
 import { ALREADY_ON_MAP, linkKey } from "../public/lib/same-listing.mjs";
+import { CLASH, ROW_GONE, addItem, removeItem } from "../public/lib/our-take.mjs";
 
 const code = readFileSync(new URL("../apps-script/Code.gs", import.meta.url), "utf8");
 
@@ -393,4 +394,162 @@ test("the script's linkKey gives the same key as the page's", () => {
     null,
   ];
   for (const link of links) assert.equal(context.linkKey(link), linkKey(link), String(link));
+});
+
+// --- Our take: getListing, saveCells and editList, with the clash check ---
+
+// A Tracker tab with one saved listing, L-abc, as addListing wrote it.
+function savedTracker(over = {}) {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context, log } = runScript([tracker]);
+  post(context, { action: "addListing", listing: newRow({ Pros: "Quiet street", ...over }) });
+  log.length = 0;
+  return { tracker, context, log };
+}
+
+test("getListing reads the row as it is in the sheet now", () => {
+  const { tracker, context } = savedTracker();
+  tracker.cells[1][TRACKER_COLUMNS.indexOf("Status")] = "Visited";
+  const reply = post(context, { action: "getListing", id: "L-abc" });
+  assert.equal(reply.ok, true);
+  assert.equal(reply.listing.Status, "Visited");
+  assert.deepEqual(post(context, { action: "getListing", id: "L-gone" }), { ok: false, error: ROW_GONE });
+});
+
+test("saveCells writes a cell whose old value matches the sheet, inside the lock", () => {
+  const { tracker, context, log } = savedTracker();
+  const reply = post(context, { action: "saveCells", id: "L-abc", cells: [{ column: "Status", old: "To call", new: "Visited" }] });
+  assert.equal(reply.ok, true);
+  assert.equal(cellOf(tracker, 1, "Status"), "Visited");
+  assert.equal(reply.listing.Status, "Visited");
+  assert.deepEqual(log, ["wait 20000", "flush", "release"]);
+});
+
+test("saveCells writes nothing and returns the sheet values when any old value differs", () => {
+  const { tracker, context } = savedTracker();
+  tracker.cells[1][TRACKER_COLUMNS.indexOf("Status")] = "Visited";
+  const before = JSON.stringify(tracker.cells);
+  const reply = post(context, {
+    action: "saveCells",
+    id: "L-abc",
+    cells: [
+      { column: "Safety", old: "", new: 4 },
+      { column: "Status", old: "To call", new: "Shortlisted" },
+    ],
+  });
+  assert.equal(reply.ok, false);
+  assert.equal(reply.error, CLASH);
+  assert.deepEqual(reply.clashes, ["Status"]);
+  assert.equal(reply.listing.Status, "Visited");
+  assert.equal(JSON.stringify(tracker.cells), before);
+});
+
+test("the clash check reads a number cell and the number the page saw as the same", () => {
+  const { tracker, context } = savedTracker({ Safety: 4 });
+  const reply = post(context, { action: "saveCells", id: "L-abc", cells: [{ column: "Safety", old: 4, new: 2 }] });
+  assert.equal(reply.ok, true);
+  assert.equal(cellOf(tracker, 1, "Safety"), 2);
+});
+
+test("the clash check reads a date cell and the ISO text the page got from load as the same", () => {
+  const { tracker, context } = savedTracker();
+  const day = new Date(Date.UTC(2026, 9, 22, 18, 30));
+  tracker.cells[1][TRACKER_COLUMNS.indexOf("Available from")] = day;
+  const seen = post(context, { action: "getListing", id: "L-abc" }).listing["Available from"];
+  assert.equal(seen, "2026-10-22T18:30:00.000Z");
+  const reply = post(context, { action: "saveCells", id: "L-abc", cells: [{ column: "Available from", old: seen, new: "Now" }] });
+  assert.equal(reply.ok, true);
+  assert.equal(cellOf(tracker, 1, "Available from"), "Now");
+});
+
+test("a rating save writes the new Overall rating inside the same lock", () => {
+  const { tracker, context } = savedTracker({ Safety: 4 });
+  const reply = post(context, { action: "saveCells", id: "L-abc", cells: [{ column: "Location", old: "", new: 2 }] });
+  assert.equal(cellOf(tracker, 1, "Overall rating"), 3);
+  assert.equal(reply.listing["Overall rating"], 3);
+  const cleared = post(context, { action: "saveCells", id: "L-abc", cells: [{ column: "Safety", old: 4, new: "" }] });
+  assert.equal(cleared.listing["Overall rating"], 2);
+});
+
+test("saveCells refuses a save when the row is gone from the sheet", () => {
+  const { tracker, context } = savedTracker();
+  tracker.cells.splice(1, 1);
+  const reply = post(context, { action: "saveCells", id: "L-abc", cells: [{ column: "Status", old: "To call", new: "Visited" }] });
+  assert.deepEqual(reply, { ok: false, error: ROW_GONE });
+  assert.equal(tracker.cells.length, 1);
+});
+
+test("saveCells refuses a bad Status, a bad rating, and cells it must not write", () => {
+  const { tracker, context } = savedTracker();
+  const before = JSON.stringify(tracker.cells);
+  const cases = [
+    [{ column: "Status", old: "To call", new: "Maybe" }, "Unknown Status: Maybe"],
+    [{ column: "Safety", old: "", new: 6 }, "Safety must be a whole number from 1 to 5, or empty."],
+    [{ column: "Safety", old: "", new: 2.5 }, "Safety must be a whole number from 1 to 5, or empty."],
+    [{ column: "Overall rating", old: "", new: 5 }, "The app cannot write Overall rating."],
+    [{ column: "Listing id", old: "L-abc", new: "x" }, "The app cannot write Listing id."],
+    [{ column: "Pros", old: "Quiet street", new: "" }, "Pros changes one item at a time."],
+    [{ column: "Nope", old: "", new: "x" }, "Unknown column: Nope"],
+  ];
+  for (const [cell, error] of cases) {
+    assert.deepEqual(post(context, { action: "saveCells", id: "L-abc", cells: [cell] }), { ok: false, error }, cell.column);
+  }
+  assert.deepEqual(post(context, { action: "saveCells", id: "L-abc", cells: [] }), { ok: false, error: "A save needs at least one cell." });
+  assert.equal(JSON.stringify(tracker.cells), before);
+});
+
+test("saveCells returns busy when the lock does not come, and writes nothing", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS, TRACKER_COLUMNS.map((c) => (c === "Listing id" ? "L-abc" : ""))]);
+  const { context } = runScript([tracker], { busy: true });
+  const reply = post(context, { action: "saveCells", id: "L-abc", cells: [{ column: "Status", old: "", new: "Visited" }] });
+  assert.deepEqual(reply, { ok: false, error: "busy" });
+  assert.equal(cellOf(tracker, 1, "Status"), "");
+});
+
+test("editList adds one item to the cell as it is in the sheet now", () => {
+  const { tracker, context } = savedTracker();
+  // Someone else added a pro since this page loaded. It stays.
+  tracker.cells[1][TRACKER_COLUMNS.indexOf("Pros")] = "Quiet street; Big balcony";
+  const reply = post(context, { action: "editList", id: "L-abc", column: "Pros", add: "Near the metro" });
+  assert.equal(reply.ok, true);
+  assert.equal(cellOf(tracker, 1, "Pros"), "Quiet street; Big balcony; Near the metro");
+  assert.equal(reply.listing.Pros, "Quiet street; Big balcony; Near the metro");
+});
+
+test("editList removes one item, and an item that is already gone counts as done", () => {
+  const { tracker, context } = savedTracker({ Cons: "Noisy; Old lift" });
+  assert.equal(post(context, { action: "editList", id: "L-abc", column: "Cons", remove: "Noisy" }).ok, true);
+  assert.equal(cellOf(tracker, 1, "Cons"), "Old lift");
+  const again = post(context, { action: "editList", id: "L-abc", column: "Cons", remove: "Noisy" });
+  assert.equal(again.ok, true);
+  assert.equal(cellOf(tracker, 1, "Cons"), "Old lift");
+});
+
+test("editList refuses a gone row, another column, and an item with ;", () => {
+  const { tracker, context } = savedTracker();
+  assert.deepEqual(post(context, { action: "editList", id: "L-gone", column: "Pros", add: "x" }), { ok: false, error: ROW_GONE });
+  assert.deepEqual(post(context, { action: "editList", id: "L-abc", column: "Status", add: "x" }), {
+    ok: false,
+    error: "Status is not a list cell.",
+  });
+  assert.deepEqual(post(context, { action: "editList", id: "L-abc", column: "Pros", add: "a; b" }), {
+    ok: false,
+    error: 'An item cannot hold a ";".',
+  });
+  assert.deepEqual(post(context, { action: "editList", id: "L-abc", column: "Pros", add: " " }), {
+    ok: false,
+    error: "Send one item to add or to remove.",
+  });
+  assert.equal(cellOf(tracker, 1, "Pros"), "Quiet street");
+});
+
+test("the script's addItem and removeItem give the same cell as the page's", () => {
+  const { context } = runScript([]);
+  const cells = ["", "Lift", "Lift; Gym", " Lift ;; Gym ; Lift "];
+  for (const cell of cells) {
+    for (const item of ["Lift", " Gym ", "Pool"]) {
+      assert.equal(context.addItem(cell, item), addItem(cell, item), `add ${item} to ${cell}`);
+      assert.equal(context.removeItem(cell, item), removeItem(cell, item), `remove ${item} from ${cell}`);
+    }
+  }
 });

@@ -1263,3 +1263,150 @@ button.place-open:hover {
 .add-local .add-secondary {
   justify-self: start;
 }
+
+/* Our take: Status and the 5 ratings save on one click, so each choice is a button, not a form field. */
+.take-message {
+  min-height: 1.25rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.take-message--error {
+  color: var(--error);
+}
+
+.take-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.take-choice {
+  min-width: 2rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid oklch(70% 0.015 175);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.take-choice:hover {
+  border-color: var(--ink-soft);
+}
+
+.take-choice[aria-pressed="true"] {
+  border-color: transparent;
+  color: var(--shell-ink);
+  background: var(--shell);
+}
+
+/* A picked Status takes the Status color from the pins and cards. */
+.take-choice[aria-pressed="true"].status--to-call { background: var(--to-call); color: var(--to-call-ink); }
+.take-choice[aria-pressed="true"].status--visit-scheduled { background: var(--visit-scheduled); color: var(--visit-scheduled-ink); }
+.take-choice[aria-pressed="true"].status--visited { background: var(--visited); color: var(--visited-ink); }
+.take-choice[aria-pressed="true"].status--shortlisted { background: var(--shortlisted); color: var(--shortlisted-ink); }
+.take-choice[aria-pressed="true"].status--rejected { background: var(--rejected); color: var(--rejected-ink); }
+
+.take-choice[aria-disabled="true"],
+.take-choice:disabled,
+.take-add [aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.take-choice:disabled {
+  cursor: not-allowed;
+}
+
+.take-ratings {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.take-rating {
+  display: grid;
+  grid-template-columns: minmax(7rem, 40%) 1fr;
+  gap: 1rem;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.take-rating-name {
+  color: var(--ink-soft);
+}
+
+.take-overall {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.take-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.take-items li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.125rem 0;
+}
+
+.take-items li span {
+  overflow-wrap: anywhere;
+}
+
+.take-remove {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--ink-soft);
+  background: none;
+  cursor: pointer;
+}
+
+.take-remove:hover {
+  color: var(--error);
+  background: var(--ground);
+}
+
+.take-add {
+  display: flex;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+}
+
+.take-add input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3125rem 0.5rem;
+  border: 1px solid oklch(70% 0.015 175);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+/* The filters hide this listing, so its pin is not on the map. Yellow, like a value the app fixed. */
+.details-hidden {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid oklch(72% 0.13 85);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  background: oklch(95% 0.07 95);
+}

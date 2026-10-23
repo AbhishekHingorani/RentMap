@@ -56,6 +56,11 @@ var PIN_PRECISIONS = ["building", "society", "locality"];
 var RATING_COLUMNS = ["Safety", "Water supply", "Location", "Condition", "Natural light"];
 // The script works these out from the other cells. The page never writes them.
 var WORKED_OUT_COLUMNS = ["Total monthly cost", "Overall rating"];
+var STATUSES = ["To call", "Visit scheduled", "Visited", "Shortlisted", "Rejected"];
+// These cells hold items split by ";". A save changes them one item at a time, with editList, so they never clash.
+var LIST_COLUMNS = ["Pros", "Cons", "Notes", "Photos"];
+// editList takes these. Notes wait for the owner to decide how notes are split. See "Known gaps" in SPEC.md.
+var ITEM_COLUMNS = ["Pros", "Cons", "Photos"];
 var LOCK_WAIT_MS = 20000;
 
 // Run this once from the Apps Script editor. It adds any missing tab and writes its headers.
@@ -97,6 +102,12 @@ function doPost(e) {
       reply = addPlace(body.place, body.addedBy);
     } else if (body.action === "addListing") {
       reply = addListing(body.listing);
+    } else if (body.action === "getListing") {
+      reply = getListing(body.id);
+    } else if (body.action === "saveCells") {
+      reply = saveCells(body.id, body.cells);
+    } else if (body.action === "editList") {
+      reply = editList(body.id, body.column, body.add, body.remove);
     } else {
       reply = { ok: false, error: "unknown action: " + body.action };
     }
@@ -211,6 +222,143 @@ function addListing(listing) {
     sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
     return { ok: true, listing: writeWorkedOut(sheet, rowNumber, headers) };
   });
+}
+
+// The page reads the listing's row again when a person opens its details. A read needs no lock.
+function getListing(id) {
+  var found = findListingRow(SpreadsheetApp.getActiveSpreadsheet(), id);
+  return found ? { ok: true, listing: found.listing } : { ok: false, error: "row_gone" };
+}
+
+// The clash check, from "Two people edit one listing" in SPEC.md. cells: [{ column, old, new }], where old is
+// the value the person saw. Inside the lock, each old value is compared with the cell in the sheet now.
+// If any differs, nothing is written and the reply holds the sheet values and the clashing columns.
+function saveCells(id, cells) {
+  if (!Array.isArray(cells) || !cells.length) return { ok: false, error: "A save needs at least one cell." };
+  for (var i = 0; i < cells.length; i++) {
+    var problem = cellProblem(cells[i]);
+    if (problem) return { ok: false, error: problem };
+  }
+  return withLock(function () {
+    var found = findListingRow(SpreadsheetApp.getActiveSpreadsheet(), id);
+    if (!found) return { ok: false, error: "row_gone" };
+    var unknown = cells.filter(function (cell) {
+      return found.headers.indexOf(cell.column) === -1;
+    });
+    if (unknown.length) return { ok: false, error: "Unknown column: " + unknown[0].column };
+    var clashes = cells
+      .filter(function (cell) {
+        return !sameCell(cell.old, found.listing[cell.column]);
+      })
+      .map(function (cell) {
+        return cell.column;
+      });
+    if (clashes.length) return { ok: false, error: "clash", clashes: clashes, listing: found.listing };
+    cells.forEach(function (cell) {
+      found.sheet.getRange(found.rowNumber, found.headers.indexOf(cell.column) + 1, 1, 1).setValues([[cellValue(cell)]]);
+    });
+    return { ok: true, listing: writeWorkedOut(found.sheet, found.rowNumber, found.headers) };
+  });
+}
+
+// Why one cell of a saveCells call cannot be written, or "" when it can.
+function cellProblem(cell) {
+  var column = cell && typeof cell.column === "string" ? cell.column : "";
+  if (!column) return "Each cell needs a column.";
+  if (TRACKER_COLUMNS.indexOf(column) === -1) return "Unknown column: " + column;
+  if (column === "Listing id" || WORKED_OUT_COLUMNS.indexOf(column) !== -1) return "The app cannot write " + column + ".";
+  if (LIST_COLUMNS.indexOf(column) !== -1) return column + " changes one item at a time.";
+  if (column === "Status" && STATUSES.indexOf(cell.new) === -1) return "Unknown Status: " + cell.new;
+  if (RATING_COLUMNS.indexOf(column) !== -1 && cell.new !== "" && ratingOf(cell.new) === null) {
+    return column + " must be a whole number from 1 to 5, or empty.";
+  }
+  return "";
+}
+
+// A rating goes into the sheet as a number, so Overall rating can read it.
+function cellValue(cell) {
+  if (RATING_COLUMNS.indexOf(cell.column) !== -1) return cell.new === "" ? "" : ratingOf(cell.new);
+  return cell.new === null || cell.new === undefined ? "" : cell.new;
+}
+
+function ratingOf(value) {
+  var n = toNumber(value);
+  return n !== null && n === Math.floor(n) && n >= 1 && n <= 5 ? n : null;
+}
+
+// The page saw the cell as JSON from load. A date cell went out as an ISO string, and a number as a number.
+function sameCell(seen, now) {
+  return cellText(seen) === cellText(now);
+}
+
+function cellText(value) {
+  if (value === null || value === undefined) return "";
+  // The fake sheet in the tests makes dates in another realm, so instanceof Date would miss them.
+  if (Object.prototype.toString.call(value) === "[object Date]") return value.toISOString();
+  return String(value).trim();
+}
+
+// "Add one item" or "remove one item" for a list cell. The script changes the cell as it is in the sheet now,
+// so these saves never clash. Removing an item that is already gone counts as done.
+function editList(id, column, add, remove) {
+  if (ITEM_COLUMNS.indexOf(column) === -1) return { ok: false, error: column + " is not a list cell." };
+  var adding = typeof add === "string" && add.trim() !== "";
+  var removing = typeof remove === "string" && remove.trim() !== "";
+  if (adding === removing) return { ok: false, error: "Send one item to add or to remove." };
+  var item = adding ? add : remove;
+  if (item.indexOf(";") !== -1) return { ok: false, error: 'An item cannot hold a ";".' };
+  return withLock(function () {
+    var found = findListingRow(SpreadsheetApp.getActiveSpreadsheet(), id);
+    if (!found) return { ok: false, error: "row_gone" };
+    var c = found.headers.indexOf(column);
+    if (c === -1) return { ok: false, error: "Unknown column: " + column };
+    var cell = found.listing[column];
+    var next = adding ? addItem(cell, item) : removeItem(cell, item);
+    if (next !== cellText(cell)) found.sheet.getRange(found.rowNumber, c + 1, 1, 1).setValues([[next]]);
+    return { ok: true, listing: writeWorkedOut(found.sheet, found.rowNumber, found.headers) };
+  });
+}
+
+// Apps Script cannot import, so these copy addItem and removeItem in public/lib/our-take.mjs. Keep them the same.
+function splitItems(value) {
+  return cellText(value)
+    .split(";")
+    .map(function (item) {
+      return item.trim();
+    })
+    .filter(Boolean);
+}
+
+function addItem(cell, item) {
+  return splitItems(cell).concat([item.trim()]).join("; ");
+}
+
+function removeItem(cell, item) {
+  var items = splitItems(cell);
+  var at = items.indexOf(item.trim());
+  if (at !== -1) items.splice(at, 1);
+  return items.join("; ");
+}
+
+// The Tracker row whose Listing id is id, as { sheet, headers, rowNumber, listing }, or null when it is gone.
+function findListingRow(spreadsheet, id) {
+  var key = String(id === null || id === undefined ? "" : id).trim();
+  var sheet = spreadsheet.getSheetByName("Tracker");
+  if (!sheet) throw new Error("missing tab: Tracker. Run setup in the Apps Script editor.");
+  if (!key) return null;
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0] || [];
+  var idColumn = headers.indexOf("Listing id");
+  if (idColumn === -1) return null;
+  for (var r = 1; r < values.length; r++) {
+    if (String(values[r][idColumn]).trim() !== key) continue;
+    var listing = {};
+    headers.forEach(function (header, c) {
+      if (header) listing[header] = values[r][c] === undefined ? "" : values[r][c];
+    });
+    return { sheet: sheet, headers: headers, rowNumber: r + 1, listing: listing };
+  }
+  return null;
 }
 
 // Run inside the lock after every write to a listing. It reads the row as it is in the sheet now,

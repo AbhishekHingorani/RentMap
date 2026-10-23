@@ -4,6 +4,7 @@
 // "+ Add listing" opens the add steps in the left column: paste a link, ask Claude web, check the values and save.
 // When Claude web cannot read the page, the bookmarklet step reads it in the person's own browser.
 // A link already on the map blocks the add. The same society and Configuration only warns.
+// The Our take tab saves Status, ratings, pros and cons on each click. The Apps Script refuses a click on a stale cell.
 import {
   NOT_GIVEN,
   formatRating,
@@ -12,9 +13,19 @@ import {
   pinLabel,
   settingsFromRows,
   sortByCost,
+  toText,
 } from "/lib/listings.mjs";
 import { CONFIGURATIONS, STATUSES } from "/lib/columns.mjs";
 import { budgetFrom, filterListings, isOverBudget, startFilters } from "/lib/filters.mjs";
+import {
+  ITEM_COLUMNS,
+  ROW_GONE,
+  cellChange,
+  itemProblem,
+  ratingAfterClick,
+  ratingValue,
+  refusalMessage,
+} from "/lib/our-take.mjs";
 import {
   CONTACT_COLUMNS,
   FLAT_COLUMNS,
@@ -160,6 +171,8 @@ const state = {
   budget: null,
   filters: startFilters(null),
   pickedId: null,
+  // The open listing details. null when they are closed. See freshDetail.
+  detail: null,
   markers: new Map(),
   roughCircle: null,
   listScroll: 0,
@@ -249,7 +262,9 @@ function pinIcon(listing, picked) {
 }
 
 function pin(listing) {
-  const marker = L.marker(listing.spot, { icon: pinIcon(listing, false), keyboard: false });
+  // The list draws again after a save, so the open listing keeps its picked pin.
+  const picked = listing.id === state.pickedId;
+  const marker = L.marker(listing.spot, { icon: pinIcon(listing, picked), keyboard: false, zIndexOffset: picked ? 1000 : 0 });
   marker.on("click", () => openDetails(listing.id));
   return marker;
 }
@@ -366,17 +381,141 @@ function overviewPanel(listing) {
   ];
 }
 
-function ourTakePanel(listing) {
-  const status = el("p", "details-status");
-  status.append(statusTag(listing.status));
+// A button that saves on one click. canSave is false for a row with no Listing id.
+// While a save is in flight, a click does nothing. The button stays focusable, so focus does not jump.
+function takeButton(text, key, take, onClick) {
+  const button = el("button", "take-choice", text);
+  button.type = "button";
+  button.dataset.key = key;
+  button.disabled = !take.canSave;
+  if (take.busy) button.setAttribute("aria-disabled", "true");
+  button.addEventListener("click", () => {
+    if (!state.detail?.busy) onClick();
+  });
+  return button;
+}
+
+function statusChoices(listing, take) {
+  const group = el("div", "take-choices");
+  group.setAttribute("role", "group");
+  group.setAttribute("aria-label", "Status");
+  for (const status of STATUSES) {
+    // A hand-typed "visited" in the sheet is Visited too.
+    const on = status.toLowerCase() === listing.status.toLowerCase();
+    const button = takeButton(status, `status-${status}`, take, () => {
+      if (!on) saveCell("Status", status);
+    });
+    button.setAttribute("aria-pressed", String(on));
+    if (on) button.classList.add(`status--${statusKey(status)}`);
+    group.append(button);
+  }
+  return group;
+}
+
+function ratingChoices(listing, take) {
+  const list = el("div", "take-ratings");
+  for (const column of RATING_COLUMNS) {
+    const now = ratingValue(listing.row[column]);
+    const row = el("div", "take-rating");
+    const name = el("span", "take-rating-name", column);
+    name.id = `rating-${column.replace(/\s+/g, "-").toLowerCase()}`;
+    const group = el("div", "take-choices");
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-labelledby", name.id);
+    for (let n = 1; n <= 5; n++) {
+      const button = takeButton(String(n), `${column}-${n}`, take, () => saveCell(column, ratingAfterClick(now, n)));
+      button.setAttribute("aria-pressed", String(n === now));
+      button.setAttribute("aria-label", `${n} of 5`);
+      if (n === now) button.title = "Click again to clear";
+      group.append(button);
+    }
+    row.append(name, group);
+    list.append(row);
+  }
+  list.append(el("p", "take-overall", `Overall rating ${formatRating(listing.overallRating)}`));
+  return list;
+}
+
+// One pro or con list: each item has a "×", and a box adds one more.
+function itemEditor(listing, column, detail, take) {
+  const name = column === "Pros" ? "pro" : "con";
+  const wrap = el("div", "items");
+  wrap.append(el("h4", "", column));
+  const items = itemsOf(listing, column);
+  if (items.length) {
+    const list = el("ul", "take-items");
+    items.forEach((item, index) => {
+      const line = el("li");
+      const remove = takeButton("×", `${column}-remove-${index}`, take, () =>
+        sendEdit({ action: "editList", id: listing.row["Listing id"], column, remove: item }),
+      );
+      remove.className = "take-remove";
+      remove.setAttribute("aria-label", `Remove this ${name}: ${item}`);
+      line.append(el("span", "", item), remove);
+      list.append(line);
+    });
+    wrap.append(list);
+  } else {
+    wrap.append(el("p", "not-given", `No ${column.toLowerCase()} yet`));
+  }
+  if (!take.canSave) return wrap;
+
+  const form = el("form", "take-add");
+  const input = el("input");
+  input.dataset.key = `${column}-new`;
+  input.autocomplete = "off";
+  input.maxLength = 200;
+  input.placeholder = `Add a ${name}`;
+  input.setAttribute("aria-label", `New ${name}`);
+  input.value = detail.drafts[column];
+  // The tab draws again after each save, so keep what the person types.
+  input.addEventListener("input", () => {
+    detail.drafts[column] = input.value;
+  });
+  const add = takeButton("Add", `${column}-add`, take, () => form.requestSubmit());
+  add.className = "add-secondary";
+  form.append(input, add);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (detail.busy) return;
+    const problem = itemProblem(column, input.value);
+    if (problem) {
+      detail.message = { text: problem, kind: "error" };
+      renderDetails();
+      return;
+    }
+    sendEdit({ action: "editList", id: listing.row["Listing id"], column, add: input.value.trim() }, () => {
+      detail.drafts[column] = "";
+    });
+  });
+  wrap.append(form);
+  return wrap;
+}
+
+function ourTakePanel(listing, detail) {
+  const take = { canSave: Boolean(toText(listing.row["Listing id"])), busy: detail.busy };
+  const parts = [];
+  if (!take.canSave) {
+    parts.push(el("p", "take-message", "This row has no Listing id in the sheet, so the app cannot change it. Give the row a Listing id in the sheet, then reload."));
+  }
+  const message = el("p", "take-message");
+  message.setAttribute("aria-live", "polite");
+  if (detail.busy) message.textContent = "Saving…";
+  else if (detail.message) {
+    message.textContent = detail.message.text;
+    message.classList.add(`take-message--${detail.message.kind}`);
+    if (detail.message.kind === "error") message.setAttribute("role", "alert");
+  }
   const notes = el("p", "notes", fieldText(listing, "Notes"));
   if (notes.textContent === NOT_GIVEN) notes.classList.add("not-given");
-  return [
-    section("Status", status),
-    section("Ratings", fieldList(listing, RATING_COLUMNS)),
-    section("Pros and cons", itemList(listing, "Pros"), itemList(listing, "Cons")),
+  parts.push(
+    message,
+    section("Status", statusChoices(listing, take)),
+    section("Ratings", ratingChoices(listing, take)),
+    section("Pros and cons", ...ITEM_COLUMNS.map((column) => itemEditor(listing, column, detail, take))),
     section("Notes", notes),
-  ];
+  );
+  return parts;
 }
 
 function contactsPanel(listing) {
@@ -411,7 +550,8 @@ const TABS = [
   { key: "all-fields", name: "All 40 fields", panel: allFieldsPanel },
 ];
 
-function tabs(listing) {
+// The tab bar keeps the picked tab in detail.tab, so the details can draw again after a save.
+function tabs(listing, detail) {
   const wrap = el("div", "details-tabs");
   const bar = el("div", "tab-bar");
   bar.setAttribute("role", "tablist");
@@ -420,6 +560,7 @@ function tabs(listing) {
   const panels = [];
 
   function pick(index, focus) {
+    detail.tab = index;
     buttons.forEach((button, i) => {
       const on = i === index;
       button.setAttribute("aria-selected", String(on));
@@ -433,6 +574,7 @@ function tabs(listing) {
     const button = el("button", "tab", tab.name);
     button.type = "button";
     button.id = `tab-${tab.key}`;
+    button.dataset.key = button.id;
     button.setAttribute("role", "tab");
     button.setAttribute("aria-controls", `panel-${tab.key}`);
     button.addEventListener("click", () => pick(index, false));
@@ -441,7 +583,7 @@ function tabs(listing) {
     panel.setAttribute("role", "tabpanel");
     panel.setAttribute("aria-labelledby", button.id);
     panel.tabIndex = 0;
-    panel.append(...tab.panel(listing));
+    panel.append(...tab.panel(listing, detail));
     buttons.push(button);
     panels.push(panel);
   });
@@ -460,7 +602,7 @@ function tabs(listing) {
 
   bar.append(...buttons);
   wrap.append(bar, ...panels);
-  pick(0, false);
+  pick(detail.tab, false);
   return wrap;
 }
 
@@ -515,7 +657,13 @@ function markPin(id, picked) {
   marker.setZIndexOffset(picked ? 1000 : 0);
 }
 
-function openDetails(id) {
+// What the open details hold besides the listing. notice is a line under the header, like a save with no map spot.
+// drafts keeps a half-typed pro or con. version goes up with each save, so an older read cannot undo it.
+function freshDetail(id, notice) {
+  return { id, tab: 0, busy: false, message: null, notice, drafts: { Pros: "", Cons: "" }, gone: false, version: 0 };
+}
+
+function openDetails(id, { notice = "" } = {}) {
   const listing = listingById(id);
   if (!listing) return;
   // A pin click can come while the add steps are open. What the person typed stays until they open the steps again.
@@ -525,15 +673,13 @@ function openDetails(id) {
   if (state.pickedId === null) state.listScroll = listEl.scrollTop;
   closePick();
   state.pickedId = id;
+  state.detail = freshDetail(id, notice);
 
-  const back = el("button", "back-link", "← Back to the list");
-  back.type = "button";
-  back.addEventListener("click", closeDetails);
-  detailsEl.replaceChildren(back, detailsHeader(listing), tabs(listing));
+  renderDetails();
   listViewEl.hidden = true;
   detailsEl.hidden = false;
   detailsEl.scrollTop = 0;
-  back.focus();
+  detailsEl.querySelector(".back-link").focus();
 
   if (listing.spot) {
     markPin(id, true);
@@ -551,6 +697,119 @@ function openDetails(id) {
       map.panTo(listing.spot);
     }
   }
+  // Someone may have changed the row since the app loaded the sheet, so read it again.
+  if (toText(listing.row["Listing id"])) readListingAgain(state.detail);
+}
+
+// Draws the open details from state. It keeps the picked tab, the scroll and the focused control.
+function renderDetails() {
+  const detail = state.detail;
+  const focused = detailsEl.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
+  const scroll = detailsEl.scrollTop;
+
+  const back = el("button", "back-link", "← Back to the list");
+  back.type = "button";
+  back.dataset.key = "back";
+  back.addEventListener("click", closeDetails);
+  const listing = listingById(detail.id);
+  if (detail.gone || !listing) {
+    const gone = el("p", "add-error", "This listing is no longer in the sheet. The app took its pin off the map.");
+    gone.setAttribute("role", "alert");
+    detailsEl.replaceChildren(back, gone);
+  } else {
+    const parts = [back, detailsHeader(listing)];
+    if (detail.notice) {
+      const notice = el("p", "add-error", detail.notice);
+      notice.setAttribute("role", "status");
+      parts.push(notice);
+    }
+    // The filters stay as the person set them. The note says why the pin is not on the map.
+    if (!filterListings([listing], state.filters).length) parts.push(el("p", "details-hidden", "Your filters hide this listing on the map."));
+    parts.push(tabs(listing, detail));
+    detailsEl.replaceChildren(...parts);
+  }
+  detailsEl.scrollTop = scroll;
+  if (focused) detailsEl.querySelector(`[data-key="${CSS.escape(focused)}"]`)?.focus();
+}
+
+// Puts a row from the Apps Script into the list, the map and the open details.
+function putListing(row) {
+  const [fresh] = listingsFromRows([row]);
+  const old = listingById(fresh.id);
+  if (old && JSON.stringify(old.row) === JSON.stringify(fresh.row)) return;
+  state.listings = sortByCost([...state.listings.filter((l) => l.id !== fresh.id), fresh]);
+  renderList();
+  if (state.detail?.id === fresh.id) renderDetails();
+}
+
+// The sheet owner deleted the row by hand. The listing leaves the list and the map.
+function rowGone(id) {
+  state.listings = state.listings.filter((l) => l.id !== id);
+  renderList();
+  if (state.detail?.id !== id) return;
+  closePick();
+  state.detail.gone = true;
+  renderDetails();
+}
+
+async function readListingAgain(detail) {
+  const version = detail.version;
+  let reply;
+  try {
+    reply = await callScript({ action: "getListing", id: detail.id });
+  } catch (err) {
+    reply = { ok: false, error: err.message };
+  }
+  // A save since this read began has a newer row, and a save in flight will bring one.
+  if (detail.version !== version || detail.busy) return;
+  if (reply.ok) putListing(reply.listing);
+  else if (reply.error === ROW_GONE) rowGone(detail.id);
+  else if (state.detail === detail) {
+    detail.message = { text: `Could not read this listing again, so the values may be old. ${reply.error}`, kind: "error" };
+    renderDetails();
+  }
+}
+
+// One click on the Our take tab: Status or one rating. It sends the value the person saw as the old value.
+function saveCell(column, value) {
+  const listing = listingById(state.detail.id);
+  sendEdit({ action: "saveCells", id: listing.row["Listing id"], cells: [cellChange(listing, column, value)] });
+}
+
+// Sends one save. A refused save shows the sheet values and a message. The app does not try again.
+// done runs after a save that worked.
+async function sendEdit(body, done = () => {}) {
+  const detail = state.detail;
+  detail.version++;
+  Object.assign(detail, { busy: true, message: null });
+  renderDetails();
+  let reply;
+  let failed = "";
+  try {
+    reply = await callScript(body);
+  } catch (err) {
+    failed = err.message;
+  }
+  detail.busy = false;
+  if (failed) {
+    // The write may have worked before the call failed. The row read again shows what the sheet holds.
+    detail.message = { text: `${failed} Your change may not be saved. The app reads the listing again.`, kind: "error" };
+    if (state.detail === detail) renderDetails();
+    readListingAgain(detail);
+    return;
+  }
+  if (reply.ok) {
+    done();
+    detail.message = { text: "Saved.", kind: "ok" };
+  } else if (reply.error === ROW_GONE) {
+    rowGone(detail.id);
+    return;
+  } else {
+    detail.message = { text: refusalMessage(reply), kind: "error" };
+  }
+  // A refused save sends the sheet values back, so the control shows what the sheet holds now.
+  if (reply.listing) putListing(reply.listing);
+  if (state.detail === detail) renderDetails();
 }
 
 // Takes the picked look off the pin and removes the dashed circle.
@@ -564,6 +823,7 @@ function closeDetails() {
   const id = state.pickedId;
   closePick();
   state.pickedId = null;
+  state.detail = null;
   detailsEl.hidden = true;
   detailsEl.replaceChildren();
   listViewEl.hidden = false;
@@ -1198,12 +1458,7 @@ async function saveListing(add) {
     const problem = add.spot.problem;
     closeAddSteps();
     renderList();
-    openDetails(saved.id);
-    if (!saved.spot) {
-      const warn = el("p", "add-error", `Saved, with no map spot. ${problem}`);
-      warn.setAttribute("role", "status");
-      detailsEl.querySelector(".details-head").after(warn);
-    }
+    openDetails(saved.id, { notice: saved.spot ? "" : `Saved, with no map spot. ${problem}` });
   } catch (err) {
     add.busy = false;
     add.error = err.message;
