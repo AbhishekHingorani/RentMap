@@ -17,6 +17,14 @@ export function toText(value) {
   return value === null || value === undefined ? "" : String(value).trim();
 }
 
+// Photos, Pros and Cons hold items split by ";".
+export function splitItems(value) {
+  return toText(value)
+    .split(";")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export function formatRupees(amount) {
   return amount === null ? NOT_GIVEN : "₹" + rupeeDigits.format(amount);
 }
@@ -49,7 +57,7 @@ export function listingsFromRows(rows) {
       maintenance: toNumber(row["Maintenance (₹/month)"]),
       totalCost: totalCostOf(row, rent),
       overallRating: toNumber(row["Overall rating"]),
-      photo: toText(row.Photos).split(";").map((s) => s.trim()).find(Boolean) ?? "",
+      photo: splitItems(row.Photos)[0] ?? "",
       spot: lat !== null && long !== null ? [lat, long] : null,
       precision: toText(row["Pin precision"]).toLowerCase(),
       link: toText(row["Listing link"]),

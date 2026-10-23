@@ -86,3 +86,8 @@ test("Over budget means the total is above the Budget", () => {
   assert.equal(isOverBudget(one({ "Total monthly cost": "" }), 45000), false);
   assert.equal(isOverBudget(one({ "Total monthly cost": 90000 }), null), false);
 });
+
+test("a hand-typed Status still counts, whatever its case", () => {
+  assert.equal(passes({ Status: "rejected " }), false);
+  assert.equal(passes({ Status: "shortlisted" }, { shortlistedOnly: true }), true);
+});

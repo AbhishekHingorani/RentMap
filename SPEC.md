@@ -135,7 +135,7 @@ All design work uses Impeccable, installed in `.claude/skills/impeccable`. Lapto
 
 - Each listing pin shows total cost and Configuration, like "₹38k · 2BHK". Its color shows the Status.
 - Each place shows as a black ★ with its name.
-- When a picked listing's Pin precision is society or locality, a dashed circle shows around its pin.
+- When a picked listing's Pin precision is society or locality, a dashed circle shows around its pin. The circle has a radius of 250 m for society and 1500 m for locality. These sizes are a builder's guess.
 
 ### Listing details
 
@@ -156,7 +156,7 @@ If a person saves a listing that their filters hide, its details show a yellow n
 Source: [Pick the map filters](.scratch/rental-map/issues/13-map-filters.md).
 
 - **Max ₹/month:** one number box. It checks Total monthly cost. If Maintenance is empty, it checks Rent alone. A listing with no Rent passes. The box starts at the Budget from the Settings tab. Changing the box does not change the sheet.
-- **Configuration:** one checkbox each for 1RK, 1BHK, 2BHK, 3BHK, 4BHK+. All are ticked at start.
+- **Configuration:** one checkbox each for 1RK, 1BHK, 2BHK, 3BHK, 4BHK+. All are ticked at start. A listing with no Configuration, or one that is not one of the 5, has nothing to check, so it passes.
 - **Shortlisted only:** a switch, off at start.
 - **Show rejected:** a switch, off at start. Rejected listings are hidden until it is on.
 - **Search:** one box. It matches Society / building name and Locality. Case does not matter.

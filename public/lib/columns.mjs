@@ -48,4 +48,6 @@ export const PLACES_COLUMNS = ["Name", "Address", "Lat", "Long", "Pin precision"
 
 export const SETTINGS_COLUMNS = ["Setting", "Value"];
 
+export const CONFIGURATIONS = ["1RK", "1BHK", "2BHK", "3BHK", "4BHK+"];
+
 export const STATUSES = ["To call", "Visit scheduled", "Visited", "Shortlisted", "Rejected"];

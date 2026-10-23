@@ -1,8 +1,9 @@
 // The filter bar rules, from "Screen > Filters" in SPEC.md. No DOM here, so tests can run it in Node.
 // Filters belong to one person. They live in memory only and reset each time the app opens.
+import { CONFIGURATIONS } from "./columns.mjs";
 import { toNumber } from "./listings.mjs";
 
-export const CONFIGURATIONS = ["1RK", "1BHK", "2BHK", "3BHK", "4BHK+"];
+export { CONFIGURATIONS };
 const BUDGET_SETTING = "Budget (₹/month)";
 
 // An empty Budget cell means no cap.
@@ -26,21 +27,24 @@ function costToCheck(listing) {
   return listing.maintenance === null ? listing.rent : listing.totalCost;
 }
 
-// "2bhk" typed by hand still matches the 2BHK box.
-function configurationKey(configuration) {
-  return configuration.toUpperCase().replace(/\s+/g, "");
+// "2bhk" or "rejected " typed by hand still matches.
+function sameWord(text) {
+  return text.toUpperCase().replace(/\s+/g, "");
 }
+const SHORTLISTED = sameWord("Shortlisted");
+const REJECTED = sameWord("Rejected");
 
 function passes(listing, filters, search) {
   const cost = costToCheck(listing);
   if (filters.maxCost !== null && cost !== null && cost > filters.maxCost) return false;
 
   // A listing with no Configuration, or one outside the 5 boxes, has nothing to check.
-  const key = configurationKey(listing.configuration);
+  const key = sameWord(listing.configuration);
   if (CONFIGURATIONS.includes(key) && !filters.configurations.has(key)) return false;
 
-  if (filters.shortlistedOnly && listing.status !== "Shortlisted") return false;
-  if (!filters.showRejected && listing.status === "Rejected") return false;
+  const status = sameWord(listing.status);
+  if (filters.shortlistedOnly && status !== SHORTLISTED) return false;
+  if (!filters.showRejected && status === REJECTED) return false;
 
   if (search) {
     const text = `${listing.society}\n${listing.locality}`.toLowerCase();

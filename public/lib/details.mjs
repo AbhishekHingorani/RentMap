@@ -1,14 +1,27 @@
 // What the listing details view shows, from "Screen > Listing details" in SPEC.md. No DOM here.
 import { TRACKER_COLUMNS } from "./columns.mjs";
-import { NOT_GIVEN, formatRating, formatRupees, toNumber, toText } from "./listings.mjs";
+import { NOT_GIVEN, formatRating, formatRupees, splitItems, toNumber, toText } from "./listings.mjs";
 
-const MONEY_COLUMNS = new Set([
-  "Rent (₹/month)",
-  "Maintenance (₹/month)",
-  "Total monthly cost",
-  "Deposit",
-  "Brokerage fee",
-]);
+// The Tracker columns each details tab shows, in sheet order.
+export const MONEY_COLUMNS = ["Rent (₹/month)", "Maintenance (₹/month)", "Total monthly cost", "Deposit", "Brokerage fee"];
+export const FLAT_COLUMNS = [
+  "Configuration",
+  "Carpet area (sq ft)",
+  "Super built-up area (sq ft)",
+  "Bathrooms",
+  "Floor / total floors",
+  "Furnishing",
+  "Parking",
+  "Lift",
+  "Available from",
+  "Other details",
+];
+export const RATING_COLUMNS = ["Safety", "Water supply", "Location", "Condition", "Natural light"];
+export const CONTACT_COLUMNS = ["Listed by", "Broker name", "Broker phone", "Owner name", "Owner phone"];
+
+// How far a rough pin may be from the home, in metres. The spec gives no size, so these are a fair guess.
+// A building pin is exact, so it has no circle.
+export const ROUGH_PIN_RADIUS_M = { society: 250, locality: 1500 };
 
 // The value of one Tracker column as the screen shows it.
 export function fieldText(listing, column) {
@@ -17,7 +30,7 @@ export function fieldText(listing, column) {
   if (column === "Overall rating") return formatRating(listing.overallRating);
 
   const raw = listing.row[column];
-  if (MONEY_COLUMNS.has(column)) {
+  if (MONEY_COLUMNS.includes(column)) {
     const amount = toNumber(raw);
     if (amount !== null) return formatRupees(amount);
   }
@@ -34,12 +47,14 @@ export function allFields(listing) {
 
 // A society or locality pin is only near the home, so the map draws a dashed circle round it.
 export function isRoughPin(listing) {
-  return listing.precision === "society" || listing.precision === "locality";
+  return Object.hasOwn(ROUGH_PIN_RADIUS_M, listing.precision);
 }
 
 export function photoLinks(listing) {
-  return toText(listing.row.Photos)
-    .split(";")
-    .map((link) => link.trim())
-    .filter(Boolean);
+  return splitItems(listing.row.Photos);
+}
+
+// Pros and Cons, one item each.
+export function itemsOf(listing, column) {
+  return splitItems(listing.row[column]);
 }

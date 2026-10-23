@@ -2,7 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { listingsFromRows } from "../public/lib/listings.mjs";
 import { TRACKER_COLUMNS } from "../public/lib/columns.mjs";
-import { allFields, fieldText, isRoughPin, photoLinks } from "../public/lib/details.mjs";
+import {
+  CONTACT_COLUMNS,
+  FLAT_COLUMNS,
+  MONEY_COLUMNS,
+  RATING_COLUMNS,
+  allFields,
+  fieldText,
+  isRoughPin,
+  itemsOf,
+  photoLinks,
+} from "../public/lib/details.mjs";
 
 test("All 40 fields lists every Tracker column with its number, in sheet order", () => {
   const [listing] = listingsFromRows([{ "Listing id": "abc", Locality: "Whitefield" }]);
@@ -58,4 +68,20 @@ test("a pin is rough when Pin precision is society or locality", () => {
 test("photo links are every link in the Photos cell", () => {
   const [listing] = listingsFromRows([{ Photos: "https://a/1.jpg; ;https://a/2.jpg " }]);
   assert.deepEqual(photoLinks(listing), ["https://a/1.jpg", "https://a/2.jpg"]);
+});
+
+test("Our take shows the 5 ratings, and Overall rating stays in the header", () => {
+  assert.deepEqual(RATING_COLUMNS, ["Safety", "Water supply", "Location", "Condition", "Natural light"]);
+});
+
+test("every column a details tab names is a Tracker column", () => {
+  for (const column of [...MONEY_COLUMNS, ...FLAT_COLUMNS, ...RATING_COLUMNS, ...CONTACT_COLUMNS]) {
+    assert.ok(TRACKER_COLUMNS.includes(column), column);
+  }
+});
+
+test("Pros and Cons split into one item each", () => {
+  const [listing] = listingsFromRows([{ Pros: "Big balcony; ; Quiet " }]);
+  assert.deepEqual(itemsOf(listing, "Pros"), ["Big balcony", "Quiet"]);
+  assert.deepEqual(itemsOf(listing, "Cons"), []);
 });

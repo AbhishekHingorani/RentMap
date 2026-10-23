@@ -9,9 +9,20 @@ import {
   settingsFromRows,
   sortByCost,
 } from "/lib/listings.mjs";
-import { STATUSES } from "/lib/columns.mjs";
-import { CONFIGURATIONS, budgetFrom, filterListings, isOverBudget, startFilters } from "/lib/filters.mjs";
-import { allFields, fieldText, isRoughPin, photoLinks } from "/lib/details.mjs";
+import { CONFIGURATIONS, STATUSES } from "/lib/columns.mjs";
+import { budgetFrom, filterListings, isOverBudget, startFilters } from "/lib/filters.mjs";
+import {
+  CONTACT_COLUMNS,
+  FLAT_COLUMNS,
+  MONEY_COLUMNS,
+  RATING_COLUMNS,
+  ROUGH_PIN_RADIUS_M,
+  allFields,
+  fieldText,
+  isRoughPin,
+  itemsOf,
+  photoLinks,
+} from "/lib/details.mjs";
 
 const NAME_KEY = "rentalMap.personName";
 
@@ -91,9 +102,6 @@ const state = {
   roughCircle: null,
   listScroll: 0,
 };
-
-// How far a rough pin may be from the home. The spec does not give a size, so these are a fair guess.
-const ROUGH_PIN_RADIUS_M = { society: 250, locality: 1500 };
 
 function statusKey(status) {
   return STATUSES.includes(status) ? status.toLowerCase().replace(/\s+/g, "-") : "unknown";
@@ -238,12 +246,8 @@ function fieldList(listing, columns) {
   return list;
 }
 
-// Pros and Cons hold items split by ";".
 function itemList(listing, column) {
-  const items = String(listing.row[column] ?? "")
-    .split(";")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const items = itemsOf(listing, column);
   const wrap = el("div", "items");
   wrap.append(el("h4", "", column));
   if (!items.length) {
@@ -276,25 +280,8 @@ function overviewPanel(listing) {
   }
   return [
     section("Photos", photos),
-    section(
-      "Money",
-      fieldList(listing, ["Rent (₹/month)", "Maintenance (₹/month)", "Total monthly cost", "Deposit", "Brokerage fee"]),
-    ),
-    section(
-      "Flat",
-      fieldList(listing, [
-        "Configuration",
-        "Carpet area (sq ft)",
-        "Super built-up area (sq ft)",
-        "Bathrooms",
-        "Floor / total floors",
-        "Furnishing",
-        "Parking",
-        "Lift",
-        "Available from",
-        "Other details",
-      ]),
-    ),
+    section("Money", fieldList(listing, MONEY_COLUMNS)),
+    section("Flat", fieldList(listing, FLAT_COLUMNS)),
   ];
 }
 
@@ -305,10 +292,7 @@ function ourTakePanel(listing) {
   if (notes.textContent === NOT_GIVEN) notes.classList.add("not-given");
   return [
     section("Status", status),
-    section(
-      "Ratings",
-      fieldList(listing, ["Safety", "Water supply", "Location", "Condition", "Natural light", "Overall rating"]),
-    ),
+    section("Ratings", fieldList(listing, RATING_COLUMNS)),
     section("Pros and cons", itemList(listing, "Pros"), itemList(listing, "Cons")),
     section("Notes", notes),
   ];
@@ -316,7 +300,7 @@ function ourTakePanel(listing) {
 
 function contactsPanel(listing) {
   return [
-    section("Contacts", fieldList(listing, ["Listed by", "Broker name", "Broker phone", "Owner name", "Owner phone"])),
+    section("Contacts", fieldList(listing, CONTACT_COLUMNS)),
   ];
 }
 
@@ -438,16 +422,20 @@ function detailsHeader(listing) {
   return header;
 }
 
+function listingById(id) {
+  return state.listings.find((l) => l.id === id);
+}
+
 function markPin(id, picked) {
   const marker = state.markers.get(id);
-  const listing = state.listings.find((l) => l.id === id);
+  const listing = listingById(id);
   if (!marker || !listing) return;
   marker.setIcon(pinIcon(listing, picked));
   marker.setZIndexOffset(picked ? 1000 : 0);
 }
 
 function openDetails(id) {
-  const listing = state.listings.find((l) => l.id === id);
+  const listing = listingById(id);
   if (!listing) return;
   if (state.pickedId === null) state.listScroll = listEl.scrollTop;
   closePick();
@@ -495,8 +483,7 @@ function closeDetails() {
   detailsEl.replaceChildren();
   listViewEl.hidden = false;
   listEl.scrollTop = state.listScroll;
-  const button = [...listEl.querySelectorAll(".card")].find((c) => c.dataset.id === id)?.querySelector(".card-open");
-  button?.focus();
+  listEl.querySelector(`.card[data-id="${CSS.escape(id)}"] .card-open`)?.focus();
 }
 
 async function start() {
