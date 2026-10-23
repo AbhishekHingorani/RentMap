@@ -253,6 +253,13 @@ Source: [Spot a listing added twice](.scratch/rental-map/issues/14-same-listing-
 - A listing added by hand with no link has no key. Only the maybe-match runs for it.
 - The maybe-match runs only for a new listing, not on edit.
 
+- **Built (ticket 06).** The page code is `public/lib/same-listing.mjs` and the add steps in `public/app.mjs`. `apps-script/Code.gs` has its own copy of `linkKey`, and a test checks that the two agree.
+  - A 99acres link is one whose host is `99acres.com` or ends in `.99acres.com`. A 99acres link with no `spid-` part gets the other-site key.
+  - Only the Rejected Status is named in the message, like "Already on the map (Rejected): ...". The other Statuses show on the map, so the message leaves them out.
+  - On a refused write, the Apps Script replies `{ "ok": false, "error": "already_on_map", "listing": <saved row> }`. The Listing id check runs first, so a retried write of the same listing is not refused.
+  - The page adds the refused row to its list, so a second Save is blocked in the page with no call.
+  - When several saved listings are a maybe-match, the warning shows one line for each, each with its own "Open it". One "Save anyway" covers them all. A change to the society or the Configuration runs the check again.
+
 ## Edit a listing
 
 Source: [Decide how to edit and delete a saved listing](.scratch/rental-map/issues/15-edit-delete-listing.md).

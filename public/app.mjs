@@ -2,6 +2,7 @@
 // A click on a card or a pin opens the listing details. The filter bar narrows the list and the map.
 // The Places tab lists the places, like an office, and adds one. Each place shows on the map as a black star.
 // "+ Add listing" opens the add steps in the left column: paste a link, ask Claude web, check the values and save.
+// A link already on the map blocks the add. The same society and Configuration only warns.
 import {
   NOT_GIVEN,
   formatRating,
@@ -36,6 +37,7 @@ import {
   reviewFields,
   stepOnePrompt,
 } from "/lib/add-listing.mjs";
+import { ALREADY_ON_MAP, maybeMatchMessage, maybeMatches, sureMatch, sureMatchMessage } from "/lib/same-listing.mjs";
 
 const NAME_KEY = "rentalMap.personName";
 
@@ -669,8 +671,10 @@ const ADD_STEPS = [
   { title: "Check and save", body: reviewStep },
 ];
 
+// sure is the saved listing with the same link key. maybe holds saved listings with the same society and
+// Configuration, and maybeOk is true once the person clicks "Save anyway".
 function freshAdd() {
-  return { step: 0, link: "", replyText: "", fields: [], id: null, spot: undefined, error: "", busy: false };
+  return { step: 0, link: "", replyText: "", fields: [], id: null, spot: undefined, error: "", busy: false, sure: null, maybe: [], maybeOk: false };
 }
 
 function openAddSteps() {
@@ -699,8 +703,7 @@ function closeAddSteps() {
 }
 
 function goToStep(index) {
-  state.add.step = index;
-  state.add.error = "";
+  Object.assign(state.add, { step: index, error: "", sure: null, maybe: [] });
   renderAddSteps();
 }
 
@@ -733,6 +736,7 @@ function renderAddSteps() {
           error.setAttribute("role", "alert");
           item.append(error);
         }
+        item.append(...matchNotice(add));
       } else {
         item.classList.add("add-step--later");
       }
@@ -740,7 +744,10 @@ function renderAddSteps() {
     }),
   );
   document.getElementById("add-close").disabled = add.busy;
-  addStepsEl.querySelector(".add-step--open [data-focus]")?.focus();
+  // A match notice can sit below a long form, so focus goes to it and the whole notice comes into view.
+  const notice = addStepsEl.querySelector(".add-match");
+  (notice?.querySelector("button") ?? addStepsEl.querySelector(".add-step--open [data-focus]"))?.focus();
+  notice?.scrollIntoView({ block: "nearest" });
 }
 
 function linkStep(add) {
@@ -769,7 +776,14 @@ function linkStep(add) {
       return;
     }
     // A new link is a new listing, so the reply, the values and the Listing id start again.
-    if (link !== add.link) Object.assign(add, { link, replyText: "", fields: [], id: null, spot: undefined });
+    if (link !== add.link) Object.assign(add, { link, replyText: "", fields: [], id: null, spot: undefined, maybeOk: false });
+    // This runs before any Claude step, so nobody asks Claude about a listing that is already on the map.
+    const sure = sureMatch(state.listings, link);
+    if (sure) {
+      Object.assign(add, { sure, error: "" });
+      renderAddSteps();
+      return;
+    }
     goToStep(1);
   });
   return [form];
@@ -857,6 +871,8 @@ function reviewStep(add) {
     // Keep what the person types, so a "Change" and back does not lose it.
     input.addEventListener("input", () => {
       field.value = input.value;
+      // "Save anyway" was for the old society and Configuration. A new one gets checked again.
+      if (field.key === "society" || field.key === "configuration") add.maybeOk = false;
     });
     label.append(el("span", "", field.column), input);
     if (field.fixed) label.append(el("span", "add-fixed-note", "Fixed by the app"));
@@ -874,6 +890,35 @@ function reviewStep(add) {
     saveListing(add);
   });
   return [form];
+}
+
+// A sure match blocks the add and has only "Open it". A maybe-match has "Open it" for each listing and "Save anyway".
+// "Open it" opens the details even when the filters hide the listing, like a Rejected one.
+function matchNotice(add) {
+  if (!add.sure && !add.maybe.length) return [];
+  const box = el("div", "add-match");
+  box.setAttribute("role", "alert");
+  const lines = add.sure ? [[sureMatchMessage(add.sure), add.sure]] : add.maybe.map((l) => [maybeMatchMessage(l), l]);
+  for (const [text, listing] of lines) {
+    const open = el("button", "add-secondary", "Open it");
+    open.type = "button";
+    open.setAttribute("aria-label", `Open it: ${listing.society || NOT_GIVEN}`);
+    open.addEventListener("click", () => openDetails(listing.id));
+    const line = el("div", "add-match-line");
+    line.append(el("p", "add-match-text", text), open);
+    box.append(line);
+  }
+  if (!add.sure) {
+    const anyway = el("button", "add-primary", "Save anyway");
+    anyway.type = "button";
+    anyway.disabled = add.busy;
+    anyway.addEventListener("click", () => {
+      add.maybeOk = true;
+      saveListing(add);
+    });
+    box.append(anyway);
+  }
+  return [box];
 }
 
 // The map spot for a new listing: the page's own lat and long, or the geocoder from society plus locality.
@@ -899,12 +944,22 @@ async function saveListing(add) {
   const values = Object.fromEntries(add.fields.map((f) => [f.key, String(f.value)]));
   const problems = fieldProblems(values);
   if (problems.length) {
-    add.error = problems.join(" ");
+    Object.assign(add, { error: problems.join(" "), sure: null, maybe: [] });
     renderAddSteps();
     return;
   }
-  add.busy = true;
-  add.error = "";
+  // A past Save may have met the Apps Script check, which put the saved row in state.listings.
+  const sure = sureMatch(
+    state.listings.filter((l) => l.id !== add.id),
+    add.link,
+  );
+  const maybe = sure || add.maybeOk ? [] : maybeMatches(state.listings, values, add.id);
+  if (sure || maybe.length) {
+    Object.assign(add, { error: "", sure, maybe });
+    renderAddSteps();
+    return;
+  }
+  Object.assign(add, { busy: true, error: "", sure: null, maybe: [] });
   renderAddSteps();
   const say = (text) => {
     const note = addStepsEl.querySelector(".add-save-note");
@@ -925,6 +980,15 @@ async function saveListing(add) {
       reply = await callScript({ action: "addListing", listing: row });
     } catch (err) {
       throw new Error(`${err.message} The listing may or may not be saved. Click Save again. It will not add a second row.`);
+    }
+    // Someone saved the same link since this page loaded. Nothing was written, and the form keeps its values.
+    if (!reply.ok && reply.error === ALREADY_ON_MAP && reply.listing) {
+      const [found] = listingsFromRows([reply.listing]);
+      state.listings = sortByCost([...state.listings.filter((l) => l.id !== found.id), found]);
+      renderList();
+      Object.assign(add, { busy: false, sure: found });
+      if (state.add === add) renderAddSteps();
+      return;
     }
     if (!reply.ok) {
       throw new Error(reply.error === "busy" ? "The sheet is busy. Click Save again in a moment." : `The Apps Script said: ${reply.error}`);

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { TRACKER_COLUMNS, PLACES_COLUMNS, SETTINGS_COLUMNS } from "../public/lib/columns.mjs";
+import { ALREADY_ON_MAP, linkKey } from "../public/lib/same-listing.mjs";
 
 const code = readFileSync(new URL("../apps-script/Code.gs", import.meta.url), "utf8");
 
@@ -291,7 +292,7 @@ test("Total monthly cost is rent alone when maintenance is empty, and empty when
   const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
   const { context } = runScript([tracker]);
   post(context, { action: "addListing", listing: newRow({ "Listing id": "a", "Maintenance (₹/month)": "" }) });
-  post(context, { action: "addListing", listing: newRow({ "Listing id": "b", "Rent (₹/month)": "" }) });
+  post(context, { action: "addListing", listing: newRow({ "Listing id": "b", "Rent (₹/month)": "", "Listing link": "https://housing.com/rent/2" }) });
   assert.equal(cellOf(tracker, 1, "Total monthly cost"), 38999);
   assert.equal(cellOf(tracker, 2, "Total monthly cost"), "");
 });
@@ -335,4 +336,61 @@ test("addListing refuses a listing with no Listing id", () => {
     error: "A new listing needs a Listing id.",
   });
   assert.equal(tracker.cells.length, 1);
+});
+
+// "Same listing added twice" in SPEC.md: the script looks for the link key again inside its lock.
+test("addListing refuses a new listing whose link key is in the sheet, and returns the saved row", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context, log } = runScript([tracker]);
+  post(context, { action: "addListing", listing: newRow({ "Listing id": "L-first", "Added by": "Asha" }) });
+  log.length = 0;
+  const again = post(context, {
+    action: "addListing",
+    listing: newRow({ "Listing id": "L-second", "Added by": "Ravi", "Listing link": "https://99acres.com/other-spid-M93900012?x=1" }),
+  });
+  assert.equal(again.ok, false);
+  assert.equal(again.error, ALREADY_ON_MAP);
+  assert.equal(again.listing["Listing id"], "L-first");
+  assert.equal(again.listing["Added by"], "Asha");
+  assert.equal(tracker.cells.length, 2);
+  assert.deepEqual(log, ["wait 20000", "flush", "release"]);
+});
+
+test("addListing refuses a same-link listing that is Rejected", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context } = runScript([tracker]);
+  post(context, { action: "addListing", listing: newRow({ "Listing id": "L-first", Status: "Rejected" }) });
+  const again = post(context, { action: "addListing", listing: newRow({ "Listing id": "L-second" }) });
+  assert.equal(again.error, ALREADY_ON_MAP);
+  assert.equal(again.listing.Status, "Rejected");
+  assert.equal(tracker.cells.length, 2);
+});
+
+test("addListing adds listings with no link, and with other links", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context } = runScript([tracker]);
+  post(context, { action: "addListing", listing: newRow({ "Listing id": "a", "Listing link": "" }) });
+  post(context, { action: "addListing", listing: newRow({ "Listing id": "b", "Listing link": "" }) });
+  post(context, { action: "addListing", listing: newRow({ "Listing id": "c", "Listing link": "https://housing.com/rent/1?x=1" }) });
+  const d = post(context, { action: "addListing", listing: newRow({ "Listing id": "d", "Listing link": "https://housing.com/rent/2" }) });
+  assert.equal(d.ok, true);
+  assert.equal(tracker.cells.length, 5);
+  const e = post(context, { action: "addListing", listing: newRow({ "Listing id": "e", "Listing link": "https://housing.com/rent/1#top" }) });
+  assert.equal(e.error, ALREADY_ON_MAP);
+  assert.equal(e.listing["Listing id"], "c");
+});
+
+test("the script's linkKey gives the same key as the page's", () => {
+  const { context } = runScript([]);
+  const links = [
+    "https://www.99acres.com/2-bhk-flat-for-rent-in-ahad-excellencia-spid-M93900012",
+    "https://99acres.com/x-spid-M93900012?src=share#photos",
+    "https://www.99acres.com/search?city=1",
+    "https://housing.com/rent/123-flat?utm=x#top",
+    "https://example.com/spid-M93900012",
+    "",
+    "  ",
+    null,
+  ];
+  for (const link of links) assert.equal(context.linkKey(link), linkKey(link), String(link));
 });

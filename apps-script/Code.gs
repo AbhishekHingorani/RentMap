@@ -181,15 +181,24 @@ function addPlace(place, addedBy) {
 
 // listing: the new Tracker row keyed by column. The page made the Listing id and filled Status,
 // Listing link, Date added and Added by. A retried call with the same Listing id adds no second row.
+// A listing whose link key is already in the sheet is refused, and the reply holds the saved row.
+// The page checks this too, but two people can paste the same link at the same time.
 function addListing(listing) {
   listing = listing || {};
   var id = String(listing["Listing id"] || "").trim();
   if (!id) return { ok: false, error: "A new listing needs a Listing id." };
+  var key = linkKey(listing["Listing link"]);
   return withLock(function () {
     var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     var saved = readTab(spreadsheet, "Tracker");
+    // The Listing id check comes first, so a retry of this same write is not called a second copy.
     for (var i = 0; i < saved.length; i++) {
       if (String(saved[i]["Listing id"]).trim() === id) return { ok: true, listing: saved[i] };
+    }
+    if (key !== null) {
+      for (var j = 0; j < saved.length; j++) {
+        if (linkKey(saved[j]["Listing link"]) === key) return { ok: false, error: "already_on_map", listing: saved[j] };
+      }
     }
     var sheet = spreadsheet.getSheetByName("Tracker");
     var headers = sheet.getDataRange().getValues()[0];
@@ -247,6 +256,17 @@ function toNumber(value) {
   if (cleaned === "") return null;
   var n = Number(cleaned);
   return isFinite(n) ? n : null;
+}
+
+// The key of a Listing link, from "Same listing added twice" in SPEC.md. For 99acres it is the spid- part,
+// like M93900012. For other sites it is the link without its ?... and #... tail. No link has no key.
+// Apps Script cannot import, so this copies linkKey in public/lib/same-listing.mjs. Keep the two the same.
+function linkKey(link) {
+  var text = link === null || link === undefined ? "" : String(link).trim();
+  if (!text) return null;
+  var bare = text.split(/[?#]/)[0];
+  var spid = /^https?:\/\/([^/]+\.)?99acres\.com\//i.test(bare) ? bare.match(/spid-([A-Za-z0-9]+)/) : null;
+  return spid ? spid[1] : bare;
 }
 
 function sameText(a, b) {

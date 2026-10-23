@@ -1184,6 +1184,36 @@ button.place-open:hover {
   color: var(--error);
 }
 
+/* A listing that may already be on the map: one line per saved listing, each with "Open it". */
+.add-match {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid oklch(72% 0.13 85);
+  border-radius: 4px;
+  background: oklch(95% 0.07 95);
+}
+
+.add-match-line {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.add-match-text {
+  margin: 0;
+  color: var(--ink);
+}
+
+.add-match-line .add-secondary {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* A value the app fixed, like "2 BHK" to 2BHK, is marked yellow so the person checks it. */
 .add-field--fixed input,
 .add-field--fixed textarea {

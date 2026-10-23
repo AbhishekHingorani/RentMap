@@ -43,6 +43,8 @@ If the reply has no Lat and Long, the app finds the map spot from the society an
 
 After you paste a new `Code.gs`, edit the deployment and pick a new version, or the `addListing` call fails with "unknown action".
 
+A link that is already on the map stops the add at step 1, with an "Open it" button. For 99acres, two links with the same `spid-` part count as the same listing. At Save, a saved listing with the same society and Configuration gets a warning. Click "Save anyway" to add it all the same.
+
 ## Test with a few rows
 
 Open `apps-script/test-rows.tsv`, copy all 3 lines, click cell A2 of the Tracker tab, and paste. Each row has Lat and Long, so each one gets a pin. Reload the page.
