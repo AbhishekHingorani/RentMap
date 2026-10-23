@@ -258,6 +258,7 @@ Source: [Spot a listing added twice](.scratch/rental-map/issues/14-same-listing-
   - Only the Rejected Status is named in the message, like "Already on the map (Rejected): ...". The other Statuses show on the map, so the message leaves them out.
   - On a refused write, the Apps Script replies `{ "ok": false, "error": "already_on_map", "listing": <saved row> }`. The Listing id check runs first, so a retried write of the same listing is not refused.
   - The page adds the refused row to its list, so a second Save is blocked in the page with no call.
+  - A hand-typed "rejected" or "2 BHK" in the sheet still counts as Rejected or 2BHK. The sure-match message shows Date added as the local day, because the sheet sends a date cell back as a UTC timestamp.
   - When several saved listings are a maybe-match, the warning shows one line for each, each with its own "Open it". One "Save anyway" covers them all. A change to the society or the Configuration runs the check again.
 
 ## Edit a listing

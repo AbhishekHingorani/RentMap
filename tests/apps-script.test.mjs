@@ -366,7 +366,7 @@ test("addListing refuses a same-link listing that is Rejected", () => {
   assert.equal(tracker.cells.length, 2);
 });
 
-test("addListing adds listings with no link, and with other links", () => {
+test("addListing adds listings with no link or other links, and refuses a link that differs only in its # tail", () => {
   const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
   const { context } = runScript([tracker]);
   post(context, { action: "addListing", listing: newRow({ "Listing id": "a", "Listing link": "" }) });

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { listingsFromRows } from "../public/lib/listings.mjs";
 import {
+  dayText,
   linkKey,
   maybeMatchMessage,
   maybeMatches,
@@ -106,4 +107,22 @@ test("the maybe-match message names society, Configuration, rent and floor", () 
   assert.equal(maybeMatchMessage(listing), "This might be the same as: Ahad Excellencia, 2BHK, ₹38,999, 4 of 4.");
   const [rejected] = listingsFromRows([saved({ Status: "Rejected", "Rent (₹/month)": "", "Floor / total floors": "" })]);
   assert.equal(maybeMatchMessage(rejected), "This might be the same as (Rejected): Ahad Excellencia, 2BHK, not given, not given.");
+});
+
+test("a hand-typed rejected Status and 2 BHK Configuration still count", () => {
+  const listings = listingsFromRows([saved({ Status: " rejected ", Configuration: "2 BHK" })]);
+  assert.deepEqual(
+    maybeMatches(listings, { society: "Ahad Excellencia", configuration: "2BHK" }, "L-new").map((l) => l.id),
+    ["L-1"],
+  );
+  assert.match(sureMatchMessage(listings[0]), /^Already on the map \(Rejected\): /);
+});
+
+test("a date the sheet sends back as a UTC timestamp shows as the local day", () => {
+  const stamp = new Date(2026, 9, 20).toISOString();
+  assert.equal(dayText(stamp), "2026-10-20");
+  assert.equal(dayText("2026-10-20"), "2026-10-20");
+  assert.equal(dayText(""), "");
+  const [listing] = listingsFromRows([saved({ "Date added": stamp })]);
+  assert.equal(sureMatchMessage(listing), "Already on the map: Ahad Excellencia, added by Asha on 2026-10-20.");
 });

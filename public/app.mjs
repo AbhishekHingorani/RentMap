@@ -984,6 +984,8 @@ async function saveListing(add) {
     // Someone saved the same link since this page loaded. Nothing was written, and the form keeps its values.
     if (!reply.ok && reply.error === ALREADY_ON_MAP && reply.listing) {
       const [found] = listingsFromRows([reply.listing]);
+      // A row typed in with no Listing id gets a stand-in id from its place in the list it came in, which is wrong here.
+      if (!found.row["Listing id"]) found.id = `no-id-${crypto.randomUUID()}`;
       state.listings = sortByCost([...state.listings.filter((l) => l.id !== found.id), found]);
       renderList();
       Object.assign(add, { busy: false, sure: found });

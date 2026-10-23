@@ -34,6 +34,11 @@ function sameWord(text) {
 const SHORTLISTED = sameWord("Shortlisted");
 const REJECTED = sameWord("Rejected");
 
+// A hand-typed "rejected " is Rejected too. The map hides these until "Show rejected" is on.
+export function isRejected(listing) {
+  return sameWord(listing.status) === REJECTED;
+}
+
 function passes(listing, filters, search) {
   const cost = costToCheck(listing);
   if (filters.maxCost !== null && cost !== null && cost > filters.maxCost) return false;
@@ -44,7 +49,7 @@ function passes(listing, filters, search) {
 
   const status = sameWord(listing.status);
   if (filters.shortlistedOnly && status !== SHORTLISTED) return false;
-  if (!filters.showRejected && status === REJECTED) return false;
+  if (!filters.showRejected && isRejected(listing)) return false;
 
   if (search) {
     const text = `${listing.society}\n${listing.locality}`.toLowerCase();
