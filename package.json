@@ -1,0 +1,13 @@
+{
+  "name": "rental-map",
+  "private": true,
+  "description": "Puts every rental listing the group looks at on one map. Data lives in a Google Sheet.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/",
+    "check": "node --check server.js && node --check public/app.mjs && node --check public/lib/listings.mjs && node --check public/lib/columns.mjs"
+  },
+  "engines": {
+    "node": ">=18.12"
+  }
+}

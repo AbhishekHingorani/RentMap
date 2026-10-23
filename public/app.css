@@ -1,0 +1,342 @@
+@font-face {
+  font-family: "Plex Sans";
+  src: url("/fonts/plex-sans-latin.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2212, U+FEFF;
+}
+@font-face {
+  font-family: "Plex Sans";
+  src: url("/fonts/plex-sans-latin-ext.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+20A0-20AB, U+20AD-20C4, U+2113;
+}
+
+:root {
+  --ground: oklch(97.5% 0.008 85);
+  --surface: oklch(99.5% 0.004 85);
+  --line: oklch(89% 0.012 85);
+  --ink: oklch(24% 0.02 160);
+  --ink-soft: oklch(45% 0.02 160);
+  --shell: oklch(30% 0.045 165);
+  --shell-ink: oklch(96% 0.015 140);
+  --shell-ink-soft: oklch(80% 0.03 150);
+  --focus: oklch(55% 0.13 165);
+  --error: oklch(48% 0.16 28);
+
+  /* Status colors. Each pair is a fill and the text on it, at 4.5:1 or better. */
+  --to-call: oklch(46% 0.11 250);
+  --to-call-ink: oklch(99% 0 0);
+  --visit-scheduled: oklch(80% 0.14 80);
+  --visit-scheduled-ink: oklch(25% 0.05 70);
+  --visited: oklch(47% 0.13 300);
+  --visited-ink: oklch(99% 0 0);
+  --shortlisted: oklch(45% 0.11 155);
+  --shortlisted-ink: oklch(99% 0 0);
+  --rejected: oklch(86% 0.005 85);
+  --rejected-ink: oklch(35% 0.01 85);
+  --unknown: oklch(99% 0 0);
+  --unknown-ink: oklch(30% 0.01 85);
+
+  --side-width: 26rem;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font: 400 0.9375rem/1.45 "Plex Sans", system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--ground);
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: oklch(88% 0.08 150);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: var(--side-width) 1fr;
+  height: 100vh;
+}
+
+/* Left column: it scrolls by itself, so the map stays in view. */
+.side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--ground);
+}
+
+.side-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--shell);
+  color: var(--shell-ink);
+}
+
+.side-head h1 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.who {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--shell-ink-soft);
+}
+
+.list-meta {
+  margin: 0;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line);
+}
+
+.list-meta--error {
+  color: var(--error);
+}
+
+.list {
+  flex: 1;
+  margin: 0;
+  padding: 0.5rem 0.75rem 1.5rem;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.card {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 0.875rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+}
+
+.card + .card {
+  border-top: 1px solid var(--line);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.card-photo {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 4px;
+  background: oklch(93% 0.012 85);
+}
+
+.card-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.card-photo-none {
+  padding: 0.25rem;
+  font-size: 0.75rem;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+.card-body {
+  min-width: 0;
+}
+
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.card-society {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.card-locality,
+.card-facts,
+.card-note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.card-cost {
+  margin: 0.375rem 0 0.125rem;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.card-facts {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.card-config {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.card-note {
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+/* Status: the same colors on the card tag and the map pin. */
+.status {
+  flex: none;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status--to-call { background: var(--to-call); color: var(--to-call-ink); }
+.status--visit-scheduled { background: var(--visit-scheduled); color: var(--visit-scheduled-ink); }
+.status--visited { background: var(--visited); color: var(--visited-ink); }
+.status--shortlisted { background: var(--shortlisted); color: var(--shortlisted-ink); }
+.status--rejected { background: var(--rejected); color: var(--rejected-ink); }
+.status--unknown { background: var(--unknown); color: var(--unknown-ink); box-shadow: inset 0 0 0 1px var(--line); }
+
+.map {
+  min-height: 0;
+  background: oklch(93% 0.01 85);
+}
+
+/* Pin: a price tag whose point sits on the map spot. */
+.pin-anchor {
+  width: 0;
+  height: 0;
+}
+
+.pin {
+  position: absolute;
+  left: 0;
+  bottom: 7px;
+  transform: translateX(-50%);
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font: 600 0.8125rem/1.4 "Plex Sans", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px oklch(20% 0.02 160 / 0.35);
+}
+
+.pin::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  margin-left: -6px;
+  border: 6px solid transparent;
+  border-bottom: 0;
+  border-top-color: inherit;
+  border-top-width: 7px;
+}
+
+.pin.status--to-call { border-color: var(--to-call); }
+.pin.status--visit-scheduled { border-color: var(--visit-scheduled); }
+.pin.status--visited { border-color: var(--visited); }
+.pin.status--shortlisted { border-color: var(--shortlisted); }
+.pin.status--rejected {
+  border-color: oklch(62% 0.01 85);
+  box-shadow: inset 0 0 0 1px oklch(62% 0.01 85), 0 1px 3px oklch(20% 0.02 160 / 0.35);
+}
+.pin.status--unknown { border-color: var(--ink-soft); }
+
+.leaflet-container {
+  font-family: "Plex Sans", system-ui, sans-serif;
+}
+
+/* First-run name box */
+.name-box {
+  width: min(26rem, calc(100vw - 2rem));
+  padding: 1.5rem;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 12px 40px oklch(20% 0.02 160 / 0.25);
+}
+
+.name-box::backdrop {
+  background: oklch(25% 0.03 160 / 0.45);
+}
+
+.name-box h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.name-box p {
+  margin: 0 0 1.25rem;
+  color: var(--ink-soft);
+}
+
+.name-box label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.name-box input {
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid oklch(70% 0.015 85);
+  border-radius: 4px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  caret-color: var(--focus);
+}
+
+.name-box button {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  border: 0;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--shell-ink);
+  background: var(--shell);
+  cursor: pointer;
+}
+
+.name-box button:hover {
+  background: oklch(36% 0.05 165);
+}

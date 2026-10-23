@@ -1,2 +1,5 @@
 # Plugin state files. The autoharness plugin writes these in any folder a session works in.
 **/.claude/autoharness/
+
+# The local copy of config.example.json. It holds the Apps Script /exec URL, which is a secret.
+/config.json

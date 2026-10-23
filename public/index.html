@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en-IN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rental map</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="/app.css" />
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script type="module" src="/app.mjs"></script>
+  </head>
+  <body>
+    <main class="app">
+      <section class="side" aria-label="Listings">
+        <header class="side-head">
+          <h1>Rental map</h1>
+          <p class="who" id="who" hidden></p>
+        </header>
+        <p class="list-meta" id="list-meta" aria-live="polite">Loading the sheet…</p>
+        <ol class="list" id="list"></ol>
+      </section>
+      <div class="map" id="map" aria-label="Map of listings"></div>
+    </main>
+
+    <dialog class="name-box" id="name-box" aria-labelledby="name-box-title">
+      <form method="dialog" id="name-form">
+        <h2 id="name-box-title">What is your name?</h2>
+        <p>The app puts your name on the listings you add and the notes you write. It keeps your name on this computer.</p>
+        <label for="name-input">Your name</label>
+        <input id="name-input" name="name" autocomplete="given-name" required maxlength="40" />
+        <button type="submit">Save my name</button>
+      </form>
+    </dialog>
+  </body>
+</html>
