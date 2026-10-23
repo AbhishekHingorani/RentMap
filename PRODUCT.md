@@ -41,7 +41,7 @@ A person pastes a listing link. Claude (on the web, or the person's own Claude C
 ## Evidence on Hand
 
 - `Apartment Hunt.xlsx`: the user's real tracker sheet.
-- `samples/`: one saved 99acres listing page and one real Claude web reply (`samples/claude-web-reply.txt`).
+- `samples/`: one saved 99acres listing page, one saved housing.com listing page and one real Claude web reply (`samples/claude-web-reply.txt`).
 - No real photos of the users, no testimonials, no brand assets. Do not invent any.
 
 ## Product Principles

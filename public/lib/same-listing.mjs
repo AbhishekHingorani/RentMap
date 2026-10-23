@@ -9,14 +9,18 @@ import { isRejected } from "./filters.mjs";
 export const ALREADY_ON_MAP = "already_on_map";
 
 // The key of a Listing link. For 99acres it is the spid- part, like M93900012, because one flat can have
-// many 99acres links. For other sites it is the link without its ?... and #... tail. No link has no key.
+// many 99acres links. For housing.com it is "housing-" plus the number after /rent/, like housing-21267780,
+// because the words after the number can change. For other sites it is the link without its ?... and #... tail.
+// No link has no key.
 // apps-script/Code.gs copies this, because Apps Script cannot import. Keep the two the same.
 export function linkKey(link) {
   const text = toText(link);
   if (!text) return null;
   const bare = text.split(/[?#]/)[0];
   const spid = /^https?:\/\/([^/]+\.)?99acres\.com\//i.test(bare) ? bare.match(/spid-([A-Za-z0-9]+)/) : null;
-  return spid ? spid[1] : bare;
+  if (spid) return spid[1];
+  const housing = /^https?:\/\/([^/]+\.)?housing\.com\//i.test(bare) ? bare.match(/\/rent\/(\d+)(?:[-/]|$)/) : null;
+  return housing ? `housing-${housing[1]}` : bare;
 }
 
 // The saved listing with the same link key, or null.

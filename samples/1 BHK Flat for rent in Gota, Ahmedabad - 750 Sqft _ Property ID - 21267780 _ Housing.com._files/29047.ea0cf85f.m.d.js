@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkhousing_demand=self.webpackChunkhousing_demand||[]).push([[29047],{29047:(e,d,i)=>{i.r(d),i.d(d,{getEffectiveBuildTypeDeviceType:()=>getEffectiveBuildTypeDeviceType});const getEffectiveBuildTypeDeviceType=()=>({deviceType:window.__DEVICE_TYPE__,buildType:"m"})}}]);

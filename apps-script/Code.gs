@@ -584,14 +584,17 @@ function toNumber(value) {
 }
 
 // The key of a Listing link, from "Same listing added twice" in SPEC.md. For 99acres it is the spid- part,
-// like M93900012. For other sites it is the link without its ?... and #... tail. No link has no key.
+// like M93900012. For housing.com it is "housing-" plus the number after /rent/, like housing-21267780.
+// For other sites it is the link without its ?... and #... tail. No link has no key.
 // Apps Script cannot import, so this copies linkKey in public/lib/same-listing.mjs. Keep the two the same.
 function linkKey(link) {
   var text = link === null || link === undefined ? "" : String(link).trim();
   if (!text) return null;
   var bare = text.split(/[?#]/)[0];
   var spid = /^https?:\/\/([^/]+\.)?99acres\.com\//i.test(bare) ? bare.match(/spid-([A-Za-z0-9]+)/) : null;
-  return spid ? spid[1] : bare;
+  if (spid) return spid[1];
+  var housing = /^https?:\/\/([^/]+\.)?housing\.com\//i.test(bare) ? bare.match(/\/rent\/(\d+)(?:[-/]|$)/) : null;
+  return housing ? "housing-" + housing[1] : bare;
 }
 
 function sameText(a, b) {

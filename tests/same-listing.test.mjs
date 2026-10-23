@@ -37,8 +37,20 @@ test("two 99acres links for one flat have the same key", () => {
 });
 
 test("another site's key is the link without its ? and # tail", () => {
-  assert.equal(linkKey("https://housing.com/rent/123-flat?utm=x#top"), "https://housing.com/rent/123-flat");
-  assert.equal(linkKey("https://housing.com/rent/123-flat#top"), "https://housing.com/rent/123-flat");
+  assert.equal(linkKey("https://example.com/rent/123-flat?utm=x#top"), "https://example.com/rent/123-flat");
+  assert.equal(linkKey("https://example.com/rent/123-flat#top"), "https://example.com/rent/123-flat");
+});
+
+test("a housing.com key is the number after /rent/, so two links for one flat match", () => {
+  const link = "https://housing.com/rent/21267780-750-sqft-1-bhk-apartment-on-rent-in-gota-ahmedabad";
+  assert.equal(linkKey(link), "housing-21267780");
+  assert.equal(linkKey("https://www.housing.com/rent/21267780-650-sqft-flat?utm=share#photos"), "housing-21267780");
+  assert.notEqual(linkKey("https://housing.com/rent/20955842-1729-sqft-3-bhk-apartment-on-rent-in-gota-ahmedabad"), linkKey(link));
+});
+
+test("a housing.com link with no /rent/ number keeps the whole link, less its tail", () => {
+  assert.equal(linkKey("https://housing.com/in/rent/flats-for-rent-in-ahmedabad?x=1"), "https://housing.com/in/rent/flats-for-rent-in-ahmedabad");
+  assert.equal(linkKey("https://example.com/rent/21267780-flat"), "https://example.com/rent/21267780-flat");
 });
 
 test("a spid- in a link from another site is not a 99acres key", () => {

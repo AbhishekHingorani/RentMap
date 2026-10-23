@@ -183,8 +183,9 @@ The add steps show in the left column, stacked. The current step is open. A done
 3. The reply fails if it is `{"error": "could_not_read"}`, or if it has no rent and no locality. On a failure, the app shows the bookmarklet step. A small "Reply looks wrong?" link also opens that step.
 4. The person clicks the bookmarklet on the open listing page.
    - On 99acres, the bookmarklet sends a trimmed pick from `window.__initialData__.pd.pageData.propertyDetails.prop_data` (about 3,000 characters). It includes lat, long and the photo links from `pd.pageData.galleryDetails.pdGalleryData.property.images[i].variants.O`.
-   - On other sites, or when `__initialData__` is missing, it sends `document.body.innerText`.
-   - If `Prop_Id` does not match the `spid-` part of the URL, it shows "Reload this page and click again".
+   - On housing.com, it sends a pick from the page's `<script type="application/ld+json">` block (rent, places, lat, long, description, photos) and its Overview table (`tr.data-point` rows: Security, Brokerage, Furnishing, Floor number, Parking, Carpet area and more). It adds the title, the address, the seller ("by <name> (Owner)") and the amenity labels.
+   - On other sites, or when neither data source is there, it sends `document.body.innerText`.
+   - If `Prop_Id` does not match the `spid-` part of the URL, it shows "Reload this page and click again". On housing.com, the same happens when the number after `/rent/` in the ld+json `url` does not match the page URL.
 5. The bookmarklet copies the step 2 prompt to the clipboard. If that fails, it shows a box on the page with a Copy button and the text selected.
 6. The person pastes the step 2 prompt into Claude web, then pastes Claude's reply into the app. A person with Claude Code can instead paste the bookmarklet text into the app and click "Ask my local Claude". That button shows only in the bookmarklet step.
 7. The app shows a review form with the values filled in. A value in the wrong format (like "2 BHK", or "38,999" as text) is fixed and marked yellow. The person fixes any field and clicks Save. Nothing is written before Save.
@@ -201,6 +202,7 @@ The add steps show in the left column, stacked. The current step is open. A done
   - The bookmarklet step shows only after a failed reply or a "Reply looks wrong?" click. It is a step between "Ask Claude web" and "Check and save".
   - A reply with no JSON at all is a paste mistake. It shows a message and does not open the bookmarklet step.
   - A 99acres page with no `spid-` in its URL also gets "Reload this page and click again".
+  - The housing.com photo links in the ld+json hold `/v0/version/` in place of a size. That link returns HTTP 417. The bookmarklet swaps it for `/v0/fs/`, the full-screen size (about 60 KB on the sample).
   - The 99acres pick on the saved sample is 3,194 characters. It leaves out `haveModernLifts`, because the sample has `false` there while its description says it has lifts.
   - The server runs `claude` in the temp folder, so it reads no CLAUDE.md from the repo. It runs one call at a time and stops a call after 3 minutes.
 
@@ -257,7 +259,7 @@ The Photos column keeps the site's own links (like `imagecdn.99acres.com/...`). 
 
 Source: [Spot a listing added twice](.scratch/rental-map/issues/14-same-listing-twice.md).
 
-- **Link key.** For 99acres, the key is the `spid-` part of the link (like `M93900012`). For other sites, the key is the link without its `?...` and `#...` tail. The key is worked out from the Listing link column. It is not a column.
+- **Link key.** For 99acres, the key is the `spid-` part of the link (like `M93900012`). For housing.com, the key is `housing-` plus the number after `/rent/` (like `housing-21267780`). For other sites, the key is the link without its `?...` and `#...` tail. The key is worked out from the Listing link column. It is not a column.
 - **Sure match.** Right after the person pastes a link, before any Claude call, the app looks for a saved listing with the same key. If one exists, the app blocks the add. It shows "Already on the map: <society>, added by <name> on <date>." with an "Open it" button.
 - **Script check.** On every new-listing write, the Apps Script looks for the key again inside its lock. If the key is there, it refuses the write and returns the saved row. The app shows the sure-match message and keeps the person's input in the form.
 - **Maybe-match.** At Save in the review form, the app looks for saved listings with the same society name (case does not matter) and the same Configuration. It warns: "This might be the same as: <society>, <configuration>, <rent>, <floor>." with "Open it" and "Save anyway". Rent is not compared.
@@ -267,6 +269,7 @@ Source: [Spot a listing added twice](.scratch/rental-map/issues/14-same-listing-
 
 - **Built (ticket 06).** The page code is `public/lib/same-listing.mjs` and the add steps in `public/app.mjs`. `apps-script/Code.gs` has its own copy of `linkKey`, and a test checks that the two agree.
   - A 99acres link is one whose host is `99acres.com` or ends in `.99acres.com`. A 99acres link with no `spid-` part gets the other-site key.
+  - A housing.com link is one whose host is `housing.com` or ends in `.housing.com`. A housing.com link with no number after `/rent/`, like a search page, gets the other-site key.
   - Only the Rejected Status is named in the message, like "Already on the map (Rejected): ...". The other Statuses show on the map, so the message leaves them out.
   - On a refused write, the Apps Script replies `{ "ok": false, "error": "already_on_map", "listing": <saved row> }`. The Listing id check runs first, so a retried write of the same listing is not refused.
   - The page adds the refused row to its list, so a second Save is blocked in the page with no call.
@@ -378,7 +381,7 @@ These are not decided. Each one needs the owner before that part is built.
 - **Install for others.** How other people get the app (zip file or git repo), and how they set the Apps Script address.
 - **Refresh.** How often each person's list and map read the whole sheet again, to show other people's new listings and changes.
 - **Safari.** Does the bookmarklet run on 99acres and housing.com, and does the clipboard copy work. Only Chrome on 99acres is tested.
-- **housing.com.** What data its listing page holds for the bookmarklet. Save one listing page into `samples/` first. Until then, the bookmarklet uses `innerText` there.
+- **housing.com live.** The housing.com pick is tested only on one saved page. Does a listing opened from a search page get its own ld+json block, or does it always need a reload. Does the Overview table show a Maintenance row when a listing has one.
 - **99acres without a reload.** When a listing is opened from a search page, does `__initialData__` still match the URL. The `Prop_Id` check covers this, but it is untested.
 - **Copy site photos into Drive,** so they survive when the listing goes away. No test shows that the browser or the Apps Script can download 99acres photos. For now, site links are kept as they are.
 - **Cost of one local `claude -p` call** with the flags above. One run on the saved 99acres sample cost $0.0025 (2026-10-23). Not measured on page text or on other listings.

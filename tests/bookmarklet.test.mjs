@@ -9,7 +9,8 @@ import { PROMPT_TAIL, STEP_TWO_START, stepTwoPrompt } from "../public/lib/add-li
 
 // The saved 99acres page in samples/. Its window.__initialData__ is one inline JSON object.
 const SAMPLES = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "samples");
-const SAMPLE_HTML = fs.readFileSync(path.join(SAMPLES, fs.readdirSync(SAMPLES).find((name) => name.endsWith(".html"))), "utf8");
+const sampleHtml = (test) => fs.readFileSync(path.join(SAMPLES, fs.readdirSync(SAMPLES).find((name) => name.endsWith(".html") && test(name))), "utf8");
+const SAMPLE_HTML = sampleHtml((name) => !name.includes("Housing.com"));
 const SAMPLE_URL = "https://www.99acres.com/2-bhk-bedroom-apartment-flat-for-rent-in-ahad-excellencia-chikkanayakanahalli-bangalore-south-1160-sqft-spid-M93900012";
 
 function sampleInitialData() {
@@ -53,7 +54,77 @@ test("the pick holds the full-size photo links of the flat, not of the society",
 });
 
 test("with no __initialData__ the bookmarklet sends the page text", () => {
-  assert.deepEqual(readListingPage(fakeWindow({ href: "https://housing.com/rent/123", text: "2 BHK in HSR" })), { data: "2 BHK in HSR" });
+  assert.deepEqual(readListingPage(fakeWindow({ href: "https://example.com/rent/123", text: "2 BHK in HSR" })), { data: "2 BHK in HSR" });
+});
+
+// The saved housing.com page in samples/, as a stand-in DOM with only what the bookmarklet asks for.
+const HOUSING_HTML = sampleHtml((name) => name.includes("Housing.com"));
+const HOUSING_URL = "https://housing.com/rent/21267780-750-sqft-1-bhk-apartment-on-rent-in-gota-ahmedabad";
+
+function housingDocument(html = HOUSING_HTML) {
+  const text = (part) => part.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&");
+  const el = (part) => ({ innerText: text(part) });
+  const all = (pattern) => [...html.matchAll(pattern)].map((m) => m[1]);
+  const one = (pattern) => (html.match(pattern) ? el(html.match(pattern)[1]) : null);
+  const found = {
+    h1: one(/<h1>(.*?)<\/h1>/s),
+    ".T_addressStyle": one(/class="[^"]*T_addressStyle[^"]*">(.*?)<\/div>/s),
+    ".T_sellerStyle": one(/class="[^"]*T_sellerStyle[^"]*">((?:<div[^>]*>[^<]*<\/div>)+)<\/div>/s),
+  };
+  const lists = {
+    'script[type="application/ld+json"]': all(/<script type="application\/ld\+json">(.*?)<\/script>/gs).map((t) => ({ textContent: t })),
+    "tr.data-point": all(/<tr class="[^"]*data-point[^"]*">(.*?)<\/tr>/gs).map((row) => ({
+      querySelector: (tag) => el(row.match(new RegExp(`<${tag}[^>]*>(.*?)</${tag}>`, "s"))[1]),
+    })),
+    ".T_amenityLabelStyle": all(/class="[^"]*T_amenityLabelStyle[^"]*">([^<]*)/g).map(el),
+  };
+  return {
+    body: { innerText: "Page text" },
+    querySelector: (selector) => found[selector] ?? null,
+    querySelectorAll: (selector) => lists[selector] ?? [],
+  };
+}
+
+function housingWindow(href = HOUSING_URL, doc = housingDocument()) {
+  return { location: { href }, document: doc, navigator: {} };
+}
+
+test("on housing.com the bookmarklet sends a pick from the ld+json block and the Overview table", () => {
+  const { data, reload } = readListingPage(housingWindow());
+  assert.equal(reload, undefined);
+  assert.ok(data.length > 1000 && data.length < 4500, `data is ${data.length} characters`);
+  const pick = JSON.parse(data);
+  assert.equal(pick.Property_Id, "21267780");
+  assert.equal(pick.rent, 15000);
+  assert.equal(pick.Latitude, "23.097458");
+  assert.equal(pick.Longitude, "72.531448");
+  assert.equal(pick.places, "Gopal Nagar, Gota, Ahmedabad, Ahmedabad District, North West");
+  assert.equal(pick.seller, "by Doctor Deepak Kumar (Owner)");
+  assert.equal(pick.details.Security, "15,000");
+  assert.equal(pick.details["Floor number"], "3 of 15 floors");
+  assert.equal(pick.details.Parking, "1 Covered and 1 Open Parking");
+  assert.equal(pick.details["Carpet area"], "650 sq.ft");
+  assert.ok(pick.features.includes("Lift"));
+  assert.ok(!pick.features.some((label) => label.startsWith("More")));
+  assert.doesNotMatch(pick.Description, /<br>/);
+});
+
+test("the housing.com photo links name the full-screen size, since the version links do not load", () => {
+  const pick = JSON.parse(readListingPage(housingWindow()).data);
+  assert.equal(pick.photos.length, 3);
+  assert.equal(pick.photos[0], "https://is1-3.housingcdn.com/01c16c28/ab1fe8014879b302ac2f4fc1842a644a/v0/fs/1_bhk_apartment-for-rent-gota-Ahmedabad-hall.jpg");
+  assert.ok(pick.photos.every((link) => !link.includes("/version/")));
+});
+
+test("a housing.com page whose ld+json is of another listing asks for a reload", () => {
+  const other = "https://housing.com/rent/20955842-1729-sqft-3-bhk-apartment-on-rent-in-gota-ahmedabad";
+  assert.deepEqual(readListingPage(housingWindow(other)), { reload: true });
+  assert.deepEqual(readListingPage(housingWindow("https://housing.com/in/rent/flats-for-rent-in-ahmedabad")), { reload: true });
+});
+
+test("a housing.com page with no listing ld+json sends the page text", () => {
+  const doc = housingDocument("<html><body></body></html>");
+  assert.deepEqual(readListingPage(housingWindow(HOUSING_URL, doc)), { data: "Page text" });
 });
 
 test("a Prop_Id that does not match the spid- part of the URL asks for a reload", () => {

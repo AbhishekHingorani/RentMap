@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkhousing_demand=self.webpackChunkhousing_demand||[]).push([[70181,92562],{92562:(e,n,s)=>{s.r(n),s.d(n,{default:()=>__WEBPACK_DEFAULT_EXPORT__,useStyles:()=>useStyles});s(75641),s(22409);function useStyles(e){return null}"undefined"!=typeof window&&window.__SSR_STYLES__&&window.__SSR_STYLES__;const __WEBPACK_DEFAULT_EXPORT__=(e,n)=>e}}]);

@@ -8,13 +8,72 @@ export const RELOAD = "Reload this page and click again.";
 
 // Reads the listing from the open page. Returns { data } with the text for the prompt, or { reload: true }.
 // On 99acres, data is a trimmed pick from window.__initialData__, about 3,000 characters.
-// Elsewhere, or with no __initialData__, data is the text on the page.
+// On housing.com, data is a pick from the page's ld+json block and its Overview table.
+// Elsewhere, or with neither, data is the text on the page.
 export function readListingPage(win) {
+  const href = String(win.location.href);
+  if (/^https?:\/\/([^/]+\.)?housing\.com\//i.test(href)) {
+    const doc = win.document;
+    const clean = (value) => String(value).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const textOf = (el) => (el ? clean(el.innerText) : "");
+    let listing = null;
+    for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        const item = JSON.parse(script.textContent);
+        if (item && item.offers && /\/rent\/\d+/.test(item.url)) listing = item;
+      } catch (err) {
+        // Another ld+json block that does not parse is not the listing.
+      }
+    }
+    if (!listing) return { data: doc.body.innerText };
+    // The ld+json block comes with the page load. A listing opened from a search page may not have its own.
+    const id = href.split(/[?#]/)[0].match(/\/rent\/(\d+)(?:[-/]|$)/);
+    if (!id || String(listing.url).match(/\/rent\/(\d+)/)[1] !== id[1]) return { reload: true };
+
+    const pick = { Property_Id: id[1] };
+    const title = textOf(doc.querySelector("h1"));
+    if (title) pick.title = title;
+    const address = textOf(doc.querySelector(".T_addressStyle"));
+    if (address) pick.address = address;
+    // Like "by Doctor Deepak Kumar (Owner)". The part in brackets says Owner or Agent.
+    const seller = textOf(doc.querySelector(".T_sellerStyle"));
+    if (seller) pick.seller = seller;
+    const places = [];
+    for (let place = listing.containedInPlace; place && place.name; place = place.containedInPlace) places.push(place.name);
+    if (places.length) pick.places = places.join(", ");
+    if (listing.offers.price !== undefined) pick.rent = listing.offers.price;
+    // The Overview table: Security, Brokerage, Furnishing, Floor number, Parking, Carpet area and more.
+    const details = {};
+    for (const row of doc.querySelectorAll("tr.data-point")) {
+      const label = textOf(row.querySelector("th"));
+      const value = textOf(row.querySelector("td"));
+      if (label && value) details[label] = value;
+    }
+    if (Object.keys(details).length) pick.details = details;
+    const features = [];
+    for (const el of doc.querySelectorAll(".T_amenityLabelStyle")) {
+      const label = textOf(el);
+      if (label && !/^More\b/.test(label) && features.indexOf(label) < 0) features.push(label);
+    }
+    if (features.length) pick.features = features;
+    if (listing.geo) {
+      pick.Latitude = listing.geo.latitude;
+      pick.Longitude = listing.geo.longitude;
+    }
+    if (listing.description) pick.Description = clean(listing.description).slice(0, 1000);
+    // The ld+json photo links hold the word "version" in place of a size, and that link does not load.
+    // "fs" is the full-screen size.
+    const images = Array.isArray(listing.image) ? listing.image : listing.image ? [listing.image] : [];
+    const photos = images.map((link) => String(link).replace("/v0/version/", "/v0/fs/"));
+    if (photos.length) pick.photos = photos;
+    return { data: JSON.stringify(pick) };
+  }
+
   const pageData = win.__initialData__ && win.__initialData__.pd && win.__initialData__.pd.pageData;
   const prop = pageData && pageData.propertyDetails && pageData.propertyDetails.prop_data;
   if (!prop) return { data: win.document.body.innerText };
   // 99acres opens a listing from a search page without a reload, so __initialData__ can hold an earlier listing.
-  const spid = String(win.location.href).match(/spid-([A-Za-z0-9]+)/);
+  const spid = href.match(/spid-([A-Za-z0-9]+)/);
   if (!spid || spid[1] !== prop.Prop_Id) return { reload: true };
 
   const keys = [
