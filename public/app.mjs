@@ -5,6 +5,7 @@
 // When Claude web cannot read the page, the bookmarklet step reads it in the person's own browser.
 // A link already on the map blocks the add. The same society and Configuration only warns.
 // The Our take tab saves Status, ratings, pros and cons on each click. The Apps Script refuses a click on a stale cell.
+// The "All 40 fields" tab has the Edit form and Move pin. Both send the value the person saw, for the same clash check.
 import {
   NOT_GIVEN,
   formatRating,
@@ -18,6 +19,7 @@ import {
 import { CONFIGURATIONS, STATUSES } from "/lib/columns.mjs";
 import { budgetFrom, filterListings, isOverBudget, startFilters } from "/lib/filters.mjs";
 import {
+  CLASH,
   ITEM_COLUMNS,
   ROW_GONE,
   cellChange,
@@ -40,6 +42,18 @@ import {
   photoLinks,
 } from "/lib/details.mjs";
 import { cityFrom, distancesFor, placesFromRows } from "/lib/places.mjs";
+import {
+  EDIT_COLUMNS,
+  LOCKED_COLUMNS,
+  PIN_CLASH_MESSAGE,
+  applyClash,
+  editCells,
+  editClashMessage,
+  editForm,
+  keepMine,
+  pinCells,
+  useSheetValue,
+} from "/lib/edit-listing.mjs";
 import {
   checkReply,
   dateText,
@@ -267,8 +281,14 @@ function pinIcon(listing, picked) {
 function pin(listing) {
   // The list draws again after a save, so the open listing keeps its picked pin.
   const picked = listing.id === state.pickedId;
-  const marker = L.marker(listing.spot, { icon: pinIcon(listing, picked), keyboard: false, zIndexOffset: picked ? 1000 : 0 });
-  marker.on("click", () => openDetails(listing.id));
+  // The list can draw again while the person moves the pin, so the new marker stays draggable.
+  const draggable = picked && Boolean(state.detail?.moving);
+  const marker = L.marker(listing.spot, { icon: pinIcon(listing, picked), keyboard: false, zIndexOffset: picked ? 1000 : 0, draggable });
+  // A drop ends with a click on the pin. Its details are open already, so the click must not open them again.
+  marker.on("click", () => {
+    if (state.detail?.id !== listing.id) openDetails(listing.id);
+  });
+  marker.on("dragend", () => dropPin(listing.id, marker.getLatLng()));
   return marker;
 }
 
@@ -481,20 +501,30 @@ function itemEditor(listing, column, detail, take) {
   return wrap;
 }
 
-function ourTakePanel(listing, detail) {
-  const take = { canSave: Boolean(toText(listing.row["Listing id"])), busy: detail.busy };
-  const parts = [];
-  if (!take.canSave) {
-    parts.push(el("p", "take-message", "This row has no Listing id in the sheet, so the app cannot change it. Give the row a Listing id in the sheet, then reload."));
-  }
+const NO_ID = "This row has no Listing id in the sheet, so the app cannot change it. Give the row a Listing id in the sheet, then reload.";
+
+function takeState(listing, detail) {
+  return { canSave: Boolean(toText(listing.row["Listing id"])), busy: detail.busy };
+}
+
+// The line that says "Saving…", "Saved." or why a save was refused. detail.busy holds the text while a call is out.
+function messageLine(detail) {
   const message = el("p", "take-message");
   message.setAttribute("aria-live", "polite");
-  if (detail.busy) message.textContent = "Saving…";
+  if (detail.busy) message.textContent = detail.busy;
   else if (detail.message) {
     message.textContent = detail.message.text;
     message.classList.add(`take-message--${detail.message.kind}`);
     if (detail.message.kind === "error") message.setAttribute("role", "alert");
   }
+  return message;
+}
+
+function ourTakePanel(listing, detail) {
+  const take = takeState(listing, detail);
+  const parts = [];
+  if (!take.canSave) parts.push(el("p", "take-message", NO_ID));
+  const message = messageLine(detail);
   const notes = el("p", "notes", fieldText(listing, "Notes"));
   if (notes.textContent === NOT_GIVEN) notes.classList.add("not-given");
   parts.push(
@@ -513,7 +543,8 @@ function contactsPanel(listing) {
   ];
 }
 
-function allFieldsPanel(listing) {
+// The table of all 40 columns. cell(field) gives the value cell. The Edit form puts boxes in some of them.
+function fieldsTable(listing, cell) {
   const table = el("table", "all-fields");
   const head = el("thead");
   const headRow = el("tr");
@@ -524,12 +555,115 @@ function allFieldsPanel(listing) {
     const row = el("tr");
     const column = el("th", "", field.column);
     column.scope = "row";
-    const value = el("td", field.value === NOT_GIVEN ? "not-given" : "", field.value);
-    row.append(el("td", "all-fields-number", String(field.number)), column, value);
+    column.id = `field-${field.number}`;
+    row.append(el("td", "all-fields-number", String(field.number)), column, cell(field));
     body.append(row);
   }
   table.append(head, body);
-  return [table];
+  return table;
+}
+
+function plainCell(field) {
+  return el("td", field.value === NOT_GIVEN ? "not-given" : "", field.value);
+}
+
+function fieldButton(text, key, take, onClick) {
+  const button = takeButton(text, key, take, onClick);
+  button.className = "add-secondary";
+  return button;
+}
+
+// Why Move pin cannot start, or "" when it can.
+function movePinProblem(listing) {
+  if (!listing.spot) return "This listing has no map spot yet, so it has no pin to move.";
+  if (!state.markers.has(listing.id)) return "Your filters hide this pin. Change the filters to move it.";
+  return "";
+}
+
+function allFieldsPanel(listing, detail) {
+  const take = takeState(listing, detail);
+  const parts = [];
+  if (!take.canSave) parts.push(el("p", "take-message", NO_ID));
+  parts.push(messageLine(detail));
+  if (detail.edit) return [...parts, editFormPanel(listing, detail, take)];
+
+  const actions = el("div", "fields-actions");
+  const edit = fieldButton("Edit", "edit", take, startEdit);
+  edit.disabled ||= detail.moving;
+  const problem = movePinProblem(listing);
+  const move = detail.moving
+    ? fieldButton("Stop moving", "move-stop", take, stopMoving)
+    : fieldButton("Move pin", "move", take, startMoving);
+  move.disabled ||= Boolean(problem);
+  actions.append(edit, move);
+  parts.push(actions);
+  if (detail.moving) parts.push(el("p", "add-hint", "Drag the pin on the map to the right spot. The app saves it when you drop it."));
+  else if (take.canSave && problem) parts.push(el("p", "add-hint", problem));
+  parts.push(fieldsTable(listing, plainCell));
+  return parts;
+}
+
+// The Edit form. Boxes keep what the person types in detail.edit, so the tab can draw again after a refused save.
+function editFormPanel(listing, detail, take) {
+  const edit = detail.edit;
+  const form = el("form", "edit-form");
+  const table = fieldsTable(listing, (field) => {
+    if (!EDIT_COLUMNS.includes(field.column)) {
+      const cell = plainCell(field);
+      const why = LOCKED_COLUMNS.includes(field.column) ? "Locked" : "Change it on the Our take tab";
+      cell.append(el("span", "edit-locked", why));
+      return cell;
+    }
+    const cell = el("td", "edit-cell");
+    const input = el(field.column === "Other details" ? "textarea" : "input");
+    input.value = edit.values[field.column];
+    input.autocomplete = "off";
+    input.dataset.key = `edit-${field.number}`;
+    input.setAttribute("aria-labelledby", `field-${field.number}`);
+    input.addEventListener("input", () => {
+      edit.values[field.column] = input.value;
+    });
+    cell.append(input);
+    if (Object.hasOwn(edit.clashes, field.column)) cell.append(clashNote(detail, field));
+    return cell;
+  });
+  const save = el("button", "add-primary", "Save");
+  save.type = "submit";
+  save.dataset.key = "edit-save";
+  if (detail.busy) save.setAttribute("aria-disabled", "true");
+  save.disabled = !take.canSave;
+  const cancel = fieldButton("Cancel", "edit-cancel", take, cancelEdit);
+  const actions = el("div", "fields-actions");
+  actions.append(save, cancel);
+  form.append(table, actions);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!detail.busy) saveEdit();
+  });
+  return form;
+}
+
+// "In the sheet now: <value>" under a box that a refused save named.
+function clashNote(detail, field) {
+  const edit = detail.edit;
+  const now = toText(edit.clashes[field.column]);
+  const note = el("div", "edit-clash");
+  note.append(el("p", "", `In the sheet now: ${now || "empty"}`));
+  const take = { canSave: true, busy: detail.busy };
+  const use = fieldButton("Use sheet value", `edit-use-${field.number}`, take, () => {
+    useSheetValue(edit, field.column);
+    renderDetails();
+    detailsEl.querySelector(`[data-key="edit-${field.number}"]`)?.focus();
+  });
+  const keep = fieldButton("Keep mine", `edit-keep-${field.number}`, take, () => {
+    keepMine(edit, field.column);
+    renderDetails();
+    detailsEl.querySelector(`[data-key="edit-${field.number}"]`)?.focus();
+  });
+  const buttons = el("div", "add-row");
+  buttons.append(use, keep);
+  note.append(buttons);
+  return note;
 }
 
 const TABS = [
@@ -647,9 +781,10 @@ function markPin(id, picked) {
 }
 
 // What the open details hold besides the listing. notice is a line under the header, like a save with no map spot.
-// drafts keeps a half-typed pro or con.
+// drafts keeps a half-typed pro or con. edit is the open Edit form, or null. moving is true while the pin is draggable.
+// busy is false, or the text to show while a call is out, like "Saving…".
 function freshDetail(id, notice) {
-  return { id, tab: 0, busy: false, message: null, notice, drafts: { Pros: "", Cons: "" }, gone: false };
+  return { id, tab: 0, busy: false, message: null, notice, drafts: { Pros: "", Cons: "" }, gone: false, edit: null, moving: false };
 }
 
 function openDetails(id, { notice = "" } = {}) {
@@ -672,22 +807,28 @@ function openDetails(id, { notice = "" } = {}) {
 
   if (listing.spot) {
     markPin(id, true);
-    if (isRoughPin(listing)) {
-      state.roughCircle = L.circle(listing.spot, {
-        radius: ROUGH_PIN_RADIUS_M[listing.precision],
-        className: "rough-pin",
-        dashArray: "6 6",
-        weight: 2,
-        fillOpacity: 0.08,
-        interactive: false,
-      }).addTo(map);
-      map.fitBounds(state.roughCircle.getBounds(), { padding: [60, 60], maxZoom: 16 });
-    } else {
-      map.panTo(listing.spot);
-    }
+    const circle = drawRoughCircle(listing);
+    if (circle) map.fitBounds(circle.getBounds(), { padding: [60, 60], maxZoom: 16 });
+    else map.panTo(listing.spot);
   }
   // Someone may have changed the row since the app loaded the sheet, so read it again.
   if (toText(listing.row["Listing id"])) readListingAgain(state.detail);
+}
+
+// The dashed circle round a society or locality pin of the open listing. Returns it, or null for no circle.
+function drawRoughCircle(listing) {
+  if (state.roughCircle) state.roughCircle.remove();
+  state.roughCircle = null;
+  if (!listing.spot || !isRoughPin(listing)) return null;
+  state.roughCircle = L.circle(listing.spot, {
+    radius: ROUGH_PIN_RADIUS_M[listing.precision],
+    className: "rough-pin",
+    dashArray: "6 6",
+    weight: 2,
+    fillOpacity: 0.08,
+    interactive: false,
+  }).addTo(map);
+  return state.roughCircle;
 }
 
 // Draws the open details from state. It keeps the picked tab, the scroll and the focused control.
@@ -728,6 +869,8 @@ function putListing(row) {
   if (old && JSON.stringify(old.row) === JSON.stringify(fresh.row)) return;
   state.listings = sortByCost([...state.listings.filter((l) => l.id !== fresh.id), fresh]);
   renderList();
+  // A moved pin may have a new spot and Pin precision, so its circle draws again.
+  if (state.pickedId === fresh.id) drawRoughCircle(fresh);
   if (state.detail?.id === fresh.id) renderDetails();
 }
 
@@ -767,11 +910,11 @@ function saveCell(column, value) {
 }
 
 // Sends one save. A refused save shows the sheet values and a message. The app does not try again.
-// done runs after a save that worked.
+// done runs after a save that worked. Returns the reply, or null when the call failed or the row is gone.
 async function sendEdit(body, done = () => {}) {
   const detail = state.detail;
   state.saves++;
-  Object.assign(detail, { busy: true, message: null });
+  Object.assign(detail, { busy: "Saving…", message: null });
   renderDetails();
   let reply;
   let failed = "";
@@ -786,24 +929,131 @@ async function sendEdit(body, done = () => {}) {
     detail.message = { text: `${failed} Your change may not be saved. The app reads the listing again.`, kind: "error" };
     if (state.detail === detail) renderDetails();
     readListingAgain(detail);
-    return;
+    return null;
   }
   if (reply.ok) {
     done();
     detail.message = { text: "Saved.", kind: "ok" };
   } else if (reply.error === ROW_GONE) {
     rowGone(detail.id);
-    return;
+    return null;
   } else {
     detail.message = { text: refusalMessage(reply), kind: "error" };
   }
   // A refused save sends the sheet values back, so the control shows what the sheet holds now.
   if (reply.listing) putListing(reply.listing);
   if (state.detail === detail) renderDetails();
+  return reply;
 }
 
-// Takes the picked look off the pin and removes the dashed circle.
+// --- Edit form and Move pin ---
+
+// "Edit" reads the row again, so the form opens with what the sheet holds now.
+async function startEdit() {
+  const detail = state.detail;
+  Object.assign(detail, { busy: "Reading the listing again…", message: null });
+  renderDetails();
+  // A read that began before this one has an older row, so it must not land after it.
+  state.saves++;
+  let reply;
+  try {
+    reply = await callScript({ action: "getListing", id: detail.id });
+  } catch (err) {
+    reply = { ok: false, error: err.message };
+  }
+  detail.busy = false;
+  if (reply.error === ROW_GONE) {
+    rowGone(detail.id);
+    return;
+  }
+  if (reply.ok) {
+    putListing(reply.listing);
+    detail.edit = editForm(reply.listing);
+  } else {
+    detail.message = { text: `Could not read this listing again, so the form did not open. Click Edit again. ${reply.error}`, kind: "error" };
+  }
+  if (state.detail !== detail) return;
+  renderDetails();
+  if (detail.edit) detailsEl.querySelector(".edit-form [data-key^='edit-']")?.focus();
+}
+
+function cancelEdit() {
+  const detail = state.detail;
+  Object.assign(detail, { edit: null, message: null });
+  renderDetails();
+  detailsEl.querySelector('[data-key="edit"]')?.focus();
+}
+
+// Save sends only the changed cells. A refused save keeps the form open with what the person typed.
+async function saveEdit() {
+  const detail = state.detail;
+  const edit = detail.edit;
+  const { cells, problems } = editCells(edit);
+  if (problems.length) {
+    detail.message = { text: problems.join(" "), kind: "error" };
+    renderDetails();
+    return;
+  }
+  if (!cells.length) {
+    Object.assign(detail, { edit: null, message: { text: "Nothing changed, so nothing was saved.", kind: "ok" } });
+    renderDetails();
+    return;
+  }
+  const listing = listingById(detail.id);
+  const reply = await sendEdit({ action: "saveCells", id: listing.row["Listing id"], cells });
+  if (!reply || detail.edit !== edit) return;
+  if (reply.ok) detail.edit = null;
+  else if (reply.error === CLASH) {
+    applyClash(edit, reply);
+    detail.message = { text: editClashMessage(reply), kind: "error" };
+  }
+  if (state.detail === detail) renderDetails();
+}
+
+function startMoving() {
+  const detail = state.detail;
+  const marker = state.markers.get(detail.id);
+  if (!marker) return;
+  Object.assign(detail, { moving: true, message: null });
+  marker.dragging.enable();
+  renderDetails();
+}
+
+// The pin goes back to the spot the sheet holds.
+function putPinBack(id) {
+  const marker = state.markers.get(id);
+  const listing = listingById(id);
+  marker?.dragging?.disable();
+  if (marker && listing?.spot) marker.setLatLng(listing.spot);
+}
+
+function stopMoving() {
+  const detail = state.detail;
+  detail.moving = false;
+  putPinBack(detail.id);
+  renderDetails();
+}
+
+// A drop saves the new Lat and Long at once. A refused or failed drop puts the pin back on the sheet spot.
+// The app does not try again.
+async function dropPin(id, latLng) {
+  const detail = state.detail;
+  if (detail?.id !== id || !detail.moving || detail.busy) return;
+  detail.moving = false;
+  state.markers.get(id)?.dragging?.disable();
+  const listing = listingById(id);
+  const reply = await sendEdit({ action: "saveCells", id: listing.row["Listing id"], cells: pinCells(listing, latLng) });
+  if (reply?.ok) return;
+  putPinBack(id);
+  if (reply?.error === CLASH && state.detail === detail) {
+    detail.message = { text: PIN_CLASH_MESSAGE, kind: "error" };
+    renderDetails();
+  }
+}
+
+// Takes the picked look off the pin and removes the dashed circle. A pin left mid-move goes back to its spot.
 function closePick() {
+  if (state.detail?.moving) putPinBack(state.detail.id);
   if (state.pickedId !== null) markPin(state.pickedId, false);
   if (state.roughCircle) state.roughCircle.remove();
   state.roughCircle = null;

@@ -63,6 +63,14 @@ If someone changed the same cell first, the sheet keeps their value. The tab sho
 
 After you paste a new `Code.gs`, edit the deployment and pick a new version, or the `getListing`, `saveCells` and `editList` calls fail with "unknown action".
 
+## Edit a listing and move its pin
+
+Open a listing and pick the "All 40 fields" tab. Click "Edit" to change a value Claude filled in, like a wrong rent. Click Save. The app sends only the cells you changed.
+
+If someone changed the same cell first, nothing is saved. That cell shows "In the sheet now: <value>". Click "Use sheet value" or "Keep mine", then Save again.
+
+Click "Move pin" and drag the pin on the map to the right spot. The app saves it when you drop it.
+
 ## Test with a few rows
 
 Open `apps-script/test-rows.tsv`, copy all 3 lines, click cell A2 of the Tracker tab, and paste. Each row has Lat and Long, so each one gets a pin. Reload the page.

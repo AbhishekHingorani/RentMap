@@ -471,6 +471,39 @@ test("a rating save writes the new Overall rating inside the same lock", () => {
   assert.equal(cleared.listing["Overall rating"], 2);
 });
 
+test("a Rent or Maintenance save writes the new Total monthly cost inside the same lock", () => {
+  const { tracker, context, log } = savedTracker();
+  const reply = post(context, {
+    action: "saveCells",
+    id: "L-abc",
+    cells: [{ column: "Rent (₹/month)", old: 38999, new: 40000 }],
+  });
+  assert.equal(cellOf(tracker, 1, "Total monthly cost"), 43000);
+  assert.equal(reply.listing["Total monthly cost"], 43000);
+  assert.deepEqual(log, ["wait 20000", "flush", "release"]);
+  const cleared = post(context, { action: "saveCells", id: "L-abc", cells: [{ column: "Maintenance (₹/month)", old: 3000, new: "" }] });
+  assert.equal(cleared.listing["Total monthly cost"], 40000);
+});
+
+test("a pin drop writes Lat, Long and Pin precision, and a clashing Lat writes none of them", () => {
+  const { tracker, context } = savedTracker();
+  const drop = (lat) => [
+    { column: "Lat", old: 12.9, new: lat },
+    { column: "Long", old: 77.7, new: 77.71 },
+    { column: "Pin precision", old: "society", new: "building" },
+  ];
+  tracker.cells[1][TRACKER_COLUMNS.indexOf("Lat")] = 12.95;
+  const refused = post(context, { action: "saveCells", id: "L-abc", cells: drop(12.91) });
+  assert.equal(refused.error, CLASH);
+  assert.deepEqual(refused.clashes, ["Lat"]);
+  assert.equal(cellOf(tracker, 1, "Long"), 77.7);
+
+  tracker.cells[1][TRACKER_COLUMNS.indexOf("Lat")] = 12.9;
+  const reply = post(context, { action: "saveCells", id: "L-abc", cells: drop(12.91) });
+  assert.equal(reply.ok, true);
+  assert.deepEqual([cellOf(tracker, 1, "Lat"), cellOf(tracker, 1, "Long"), cellOf(tracker, 1, "Pin precision")], [12.91, 77.71, "building"]);
+});
+
 test("saveCells refuses a save when the row is gone from the sheet", () => {
   const { tracker, context } = savedTracker();
   tracker.cells.splice(1, 1);
@@ -490,6 +523,12 @@ test("saveCells refuses a bad Status, a bad rating, and cells it must not write"
     [{ column: "Listing id", old: "L-abc", new: "x" }, "The app cannot write Listing id."],
     [{ column: "Pros", old: "Quiet street", new: "" }, "Pros changes one item at a time."],
     [{ column: "Nope", old: "", new: "x" }, "Unknown column: Nope"],
+    [{ column: "Listing link", old: "", new: "https://x.in" }, "The app cannot write Listing link."],
+    [{ column: "Date added", old: "", new: "2026-01-01" }, "The app cannot write Date added."],
+    [{ column: "Added by", old: "Asha", new: "Ravi" }, "The app cannot write Added by."],
+    [{ column: "Lat", old: 12.9, new: "north" }, "Lat must be a number from -90 to 90."],
+    [{ column: "Long", old: 77.7, new: 200 }, "Long must be a number from -180 to 180."],
+    [{ column: "Pin precision", old: "society", new: "exact" }, "Unknown Pin precision: exact"],
   ];
   for (const [cell, error] of cases) {
     assert.deepEqual(post(context, { action: "saveCells", id: "L-abc", cells: [cell] }), { ok: false, error }, cell.column);

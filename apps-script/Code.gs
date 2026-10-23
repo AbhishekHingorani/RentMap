@@ -63,6 +63,10 @@ var LIST_COLUMNS = ["Pros", "Cons", "Notes", "Photos"];
 // editList takes these. Notes wait for the owner to decide how notes are split. See "Known gaps" in SPEC.md.
 // public/lib/our-take.mjs has the same list.
 var ITEM_COLUMNS = ["Pros", "Cons"];
+// The app fills these once, when it adds the listing. A save never changes them.
+var ADD_ONLY_COLUMNS = ["Listing link", "Date added", "Added by"];
+// Move pin writes these. Each must be a number in its range.
+var SPOT_RANGES = { Lat: 90, Long: 180 };
 var LOCK_WAIT_MS = 20000;
 
 // Run this once from the Apps Script editor. It adds any missing tab and writes its headers.
@@ -272,7 +276,15 @@ function cellProblem(cell) {
   if (!column) return "Each cell needs a column.";
   if (TRACKER_COLUMNS.indexOf(column) === -1) return "Unknown column: " + column;
   if (column === "Listing id" || WORKED_OUT_COLUMNS.indexOf(column) !== -1) return "The app cannot write " + column + ".";
+  if (ADD_ONLY_COLUMNS.indexOf(column) !== -1) return "The app cannot write " + column + ".";
   if (LIST_COLUMNS.indexOf(column) !== -1) return column + " changes one item at a time.";
+  if (SPOT_RANGES[column]) {
+    var range = SPOT_RANGES[column];
+    if (typeof cell.new !== "number" || !isFinite(cell.new) || Math.abs(cell.new) > range) {
+      return column + " must be a number from -" + range + " to " + range + ".";
+    }
+  }
+  if (column === "Pin precision" && PIN_PRECISIONS.indexOf(cell.new) === -1) return "Unknown Pin precision: " + cell.new;
   if (column === "Status" && STATUSES.indexOf(cell.new) === -1) return "Unknown Status: " + cell.new;
   if (RATING_COLUMNS.indexOf(column) !== -1 && cell.new !== "" && ratingOf(cell.new) === null) {
     return column + " must be a whole number from 1 to 5, or empty.";

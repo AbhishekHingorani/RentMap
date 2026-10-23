@@ -278,6 +278,15 @@ Source: [Decide how to edit and delete a saved listing](.scratch/rental-map/issu
 - **Notes.** Anyone can add a note. Each note has a "×" with a "Delete this note?" box. Anyone can delete any note. Nobody can edit a note.
 - **No delete.** There is no Delete button. To remove a listing, a person sets its Status to Rejected. The sheet owner can still delete a row by hand in the sheet.
 
+- **Built (ticket 09).** The page code is `public/lib/edit-listing.mjs` and the "All 40 fields" tab in `public/app.mjs`. Both use the `saveCells` action.
+  - The Edit form makes 21 cells editable: the Claude-filled cells except Photos, and Broker phone, Owner name and Owner phone. A person fills those 3 by hand, and no other part of the app can change them.
+  - Status, the 5 ratings, Pros, Cons, Notes and Photos stay on the Our take tab. The form shows them with "Change it on the Our take tab".
+  - Save fixes a value in the wrong format, like the review form does, and refuses one it cannot fix. A box the person did not touch is not sent, even when the sheet holds it in another format, like "3,000".
+  - After a clash, a box the person did not touch shows the sheet value now.
+  - A dropped pin also sets Pin precision to building, because the person put the pin on the home. The dashed circle goes away.
+  - `saveCells` refuses Listing link, Date added and Added by. It refuses a Lat or Long that is not a number in range, and a Pin precision outside the 3.
+  - Move pin needs the pin on the map. A listing with no map spot, or one the filters hide, says so.
+
 ## Two people edit one listing
 
 Source: [Decide what happens when two people edit one listing at once](.scratch/rental-map/issues/16-same-listing-two-editors.md).

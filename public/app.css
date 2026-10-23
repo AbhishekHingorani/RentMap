@@ -1410,3 +1410,63 @@ button.place-open:hover {
   font-size: 0.875rem;
   background: oklch(95% 0.07 95);
 }
+
+/* The "All 40 fields" tab: Edit and Move pin above the table, and the Edit form inside it. */
+.fields-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.fields-actions + .add-hint {
+  margin-bottom: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.edit-form .fields-actions {
+  margin: 0.75rem 0 0;
+}
+
+.edit-cell input,
+.edit-cell textarea {
+  width: 100%;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid oklch(70% 0.015 175);
+  border-radius: 4px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.edit-cell textarea {
+  min-height: 4rem;
+  resize: vertical;
+}
+
+.edit-locked {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+/* A cell someone changed first: the sheet value and the two ways out, marked yellow like a fixed value. */
+.edit-clash {
+  display: grid;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid oklch(72% 0.13 85);
+  border-radius: 4px;
+  background: oklch(95% 0.07 95);
+}
+
+.edit-clash p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.edit-clash .add-row {
+  gap: 0.375rem;
+}
