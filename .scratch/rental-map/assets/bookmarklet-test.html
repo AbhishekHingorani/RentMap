@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookmarklet test</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; background: #fff; color: #111; }
+  a.bm { display: inline-block; padding: 10px 16px; background: #1a5fd0; color: #fff; border-radius: 6px; text-decoration: none; font-weight: 600; }
+  code { background: #eee; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>Bookmarklet test</h1>
+<p>Drag this button to your bookmarks bar:</p>
+<p><a class="bm" id="bm" href="#">Rental test</a></p>
+<p>Then open a listing page and click the bookmark. A box shows a report. Copy the report and paste it to Claude.</p>
+<p>Ticket: <code>.scratch/rental-map/issues/12-bookmarklet-live-test.md</code></p>
+
+<script>
+// The bookmarklet source. It is kept readable here and turned into a javascript: URL below.
+function rentalTest() {
+  var r = { host: location.host, url: location.href, ua: navigator.userAgent, time: new Date().toISOString() };
+
+  // 99acres: the listing data and the single-page-app check.
+  try {
+    var d = window.__initialData__ && window.__initialData__.pd && window.__initialData__.pd.pageData;
+    var p = d && d.propertyDetails && d.propertyDetails.prop_data;
+    r.has_initialData = !!window.__initialData__;
+    if (p) {
+      var m = location.href.match(/spid-([A-Za-z0-9]+)/);
+      var imgs = (((d.galleryDetails || {}).pdGalleryData || {}).property || {}).images || [];
+      r.acres = {
+        prop_id: p.Prop_Id, url_spid: m ? m[1] : null, match: !!m && m[1] === p.Prop_Id,
+        rent: p.Price, bhk: p.Bedroom_Num, lat: p.Latitude, lng: p.Longitude,
+        society: p.Building_Name, photos: imgs.length,
+        first_photo: imgs[0] && imgs[0].variants && imgs[0].variants.O
+      };
+    }
+  } catch (e) { r.acres_error = String(e); }
+
+  // Any site: look for embedded JSON and page globals.
+  try {
+    var nd = document.getElementById('__NEXT_DATA__');
+    r.next_data_chars = nd ? nd.textContent.length : 0;
+    if (nd) {
+      try { r.next_data_pageProps_keys = Object.keys(JSON.parse(nd.textContent).props.pageProps || {}).slice(0, 40); } catch (e) { r.next_data_parse_error = String(e); }
+    }
+    r.ld_json = Array.prototype.map.call(document.querySelectorAll('script[type="application/ld+json"]'), function (s) {
+      try { var j = JSON.parse(s.textContent); return (Array.isArray(j) ? j.map(function (x) { return x['@type']; }).join('+') : j['@type']) + ' ' + s.textContent.length; }
+      catch (e) { return 'bad ' + s.textContent.length; }
+    });
+    var f = document.createElement('iframe');
+    f.style.display = 'none';
+    document.body.appendChild(f);
+    var base = {};
+    Object.getOwnPropertyNames(f.contentWindow).forEach(function (k) { base[k] = 1; });
+    f.remove();
+    r.globals = Object.getOwnPropertyNames(window).filter(function (k) { return !base[k]; }).map(function (k) {
+      var size = '';
+      try { var v = window[k]; if (v && typeof v === 'object') size = ' ' + JSON.stringify(v).length; } catch (e) { size = ' ?'; }
+      return k + size;
+    }).filter(function (s) { return / \d{4,}$/.test(s); });
+    r.text_chars = document.body.innerText.length;
+  } catch (e) { r.scan_error = String(e); }
+
+  function show() { ta.value = JSON.stringify(r, null, 2); }
+
+  // The overlay with the report and a Copy button.
+  var box = document.createElement('div');
+  box.style.cssText = 'position:fixed;top:12px;right:12px;width:420px;max-width:90vw;z-index:2147483647;background:#fff;color:#111;border:2px solid #1a5fd0;border-radius:8px;padding:10px;font:13px system-ui,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.3)';
+  var ta = document.createElement('textarea');
+  ta.style.cssText = 'width:100%;height:300px;font:11px monospace;box-sizing:border-box';
+  var btn = document.createElement('button');
+  btn.textContent = 'Copy report';
+  btn.style.cssText = 'margin-top:6px;padding:6px 12px;font-size:14px';
+  var close = document.createElement('button');
+  close.textContent = 'Close';
+  close.style.cssText = 'margin:6px 0 0 8px;padding:6px 12px;font-size:14px';
+  close.onclick = function () { box.remove(); };
+  btn.onclick = function () {
+    r.clipboard_button = 'trying';
+    show();
+    navigator.clipboard.writeText(ta.value).then(function () {
+      r.clipboard_button = 'ok'; show(); navigator.clipboard.writeText(ta.value); btn.textContent = 'Copied';
+    }, function (e) {
+      r.clipboard_button = 'failed: ' + (e && e.name); show(); ta.select(); btn.textContent = 'Failed. Press Cmd+C';
+    });
+  };
+  box.appendChild(ta); box.appendChild(btn); box.appendChild(close);
+  document.body.appendChild(box);
+
+  // Clipboard straight from the bookmark click, with no button.
+  r.clipboard_auto = 'trying';
+  show();
+  try {
+    navigator.clipboard.writeText('rental-test auto copy ' + r.time).then(
+      function () { r.clipboard_auto = 'ok'; show(); },
+      function (e) { r.clipboard_auto = 'failed: ' + (e && e.name); show(); });
+  } catch (e) { r.clipboard_auto = 'threw: ' + e.name; show(); }
+}
+document.getElementById('bm').href = 'javascript:(' + encodeURIComponent(rentalTest.toString()) + ')();void 0';
+</script>
+</body>
+</html>

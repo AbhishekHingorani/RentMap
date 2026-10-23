@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rental map prototype</title>
+<!--
+  PROTOTYPE, throwaway. Ticket: issues/06-map-ui-prototype.md.
+  Three layouts of the rental map screen. Switch with ?variant=A|B|C or the black bar at the bottom.
+  All data lives in memory. Nothing reaches a Google Sheet. Reload to reset.
+  Only the Ahad Excellencia listing is real (samples/claude-web-reply.txt). The other listings and places are made up.
+  Geocoding, Drive upload, the bookmarklet and "Ask my local Claude" are stubs.
+  Run: python3 -m http.server 8765 -d .scratch/rental-map/assets, then open http://localhost:8765/map-ui-prototype.html
+  (OpenStreetMap tiles refuse file:// pages.)
+-->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--ink:#1f2328;--mute:#6b7280;--line:#e5e2dc;--accent:#0f766e;--warn:#fef3c7;--bad:#dc2626}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font:14px/1.45 system-ui,-apple-system,sans-serif;color:var(--ink);background:var(--bg)}
+h3{margin:4px 0 8px;font-size:16px} h4{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 10px;color:var(--ink)}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.link{border:0;background:none;color:var(--accent);padding:0;text-decoration:underline}
+button.x{border:0;background:none;font-size:20px;line-height:1;padding:0 4px;color:var(--mute)}
+input,select,textarea{font:inherit;border:1px solid var(--line);border-radius:6px;padding:5px 8px;background:#fff;color:var(--ink)}
+textarea{width:100%;min-height:70px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.small{font-size:12px} .muted{color:var(--mute)} .err{color:var(--bad);font-weight:600}
+.proto{border:1px dashed #b45309!important;color:#b45309!important;background:#fffbeb!important;font-size:12px}
+.chip{display:inline-flex;gap:4px;align-items:center;padding:2px 8px;border-radius:99px;background:#eef2f1;font-size:12px;margin:2px}
+.chip button{border:0;background:none;padding:0;color:var(--mute)}
+.status{color:#fff;padding:2px 8px;border-radius:99px;font-size:12px;white-space:nowrap}
+.tag-bad{background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:4px;font-size:12px}
+.hidden-note{background:#fef3c7;padding:6px 8px;border-radius:6px;font-size:12px;margin:6px 0}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:3px 10px;margin:0} .kv dt{color:var(--mute)} .kv dd{margin:0}
+.fixed{background:var(--warn)!important}
+.photos{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.photos img,.ph{width:120px;height:86px;object-fit:cover;border-radius:6px;background:#ddd;flex:none;display:flex;align-items:center;justify-content:center;color:#888;font-size:12px}
+.rate button{width:28px;padding:2px 0;margin-right:2px} .rate button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.raterow{display:flex;justify-content:space-between;align-items:center;margin:3px 0}
+.dh{display:flex;justify-content:space-between;gap:8px;align-items:flex-start} .title{font-size:18px;font-weight:700}
+.big{font-size:15px;margin:6px 0}
+.notes{list-style:none;padding:0;margin:0 0 8px} .notes li{border-left:3px solid var(--line);padding:2px 8px;margin:6px 0}
+pre.prompt{white-space:pre-wrap;background:#f3f4f6;padding:10px;border-radius:6px;font-size:12px;max-height:170px;overflow:auto;margin:6px 0}
+.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px} .formgrid label{display:flex;flex-direction:column;font-size:12px;color:var(--mute)}
+.formgrid label.wide{grid-column:1/-1}
+.formgrid input,.formgrid select,.formgrid textarea{color:var(--ink);font-size:14px}
+a.bm{display:inline-block;background:#111;color:#fff;padding:2px 10px;border-radius:99px;text-decoration:none}
+.legend{position:absolute;left:12px;bottom:70px;z-index:900;background:#fff;padding:6px 10px;border-radius:8px;font-size:12px;box-shadow:0 1px 6px rgba(0,0,0,.2)}
+.legend span{display:inline-flex;align-items:center;gap:4px;margin-right:8px}
+.dot{width:10px;height:10px;border-radius:99px;display:inline-block}
+.alltable{width:100%;border-collapse:collapse;font-size:12px} .alltable td{border-bottom:1px solid var(--line);padding:3px 4px;vertical-align:top} .alltable td:first-child{color:var(--mute);width:24px}
+.alltable td:nth-child(2){color:var(--mute);width:160px}
+/* map markers */
+.pinwrap{width:90px;height:26px;display:flex;justify-content:center;align-items:flex-end}
+.pin{background:var(--c);color:#fff;border:2px solid #fff;border-radius:99px;padding:1px 7px;font-size:11px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.45);white-space:nowrap}
+.pin.sel{outline:3px solid #f59e0b;transform:scale(1.15)}
+.pin.moving{outline:3px dashed #f59e0b}
+.ppin{width:26px;height:26px;border-radius:6px;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid #fff;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.45)}
+/* modal */
+#modal:empty{display:none}
+.modal-back{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:2000}
+.modal{background:#fff;border-radius:12px;padding:20px;width:min(680px,94vw);max-height:90vh;overflow:auto}
+.progress{display:flex;gap:6px;margin:4px 0 14px;flex-wrap:wrap} .progress span{font-size:12px;padding:3px 8px;border-radius:99px;background:#f1f1ef;color:var(--mute)}
+.progress span.on{background:var(--accent);color:#fff} .progress span.done{background:#d1fae5;color:#065f46}
+/* switcher */
+#switcher{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:3000;background:#111;color:#fff;border-radius:99px;padding:6px 8px;display:flex;gap:10px;align-items:center;box-shadow:0 4px 14px rgba(0,0,0,.4);font-size:13px}
+#switcher button{background:#333;color:#fff;border:0;border-radius:99px;width:28px;height:28px;padding:0}
+
+/* ---------- Variant A: map first, side drawer ---------- */
+.va{display:flex;flex-direction:column;height:100vh}
+.va-top{display:flex;gap:10px;align-items:center;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.va-top .fc{display:inline-flex;gap:4px;align-items:center}
+.va-main{position:relative;flex:1}
+#map{position:absolute;inset:0}
+#va-drawer{position:absolute;top:0;right:0;bottom:0;width:460px;background:#fff;box-shadow:-4px 0 16px rgba(0,0,0,.15);overflow:auto;z-index:1000;padding:16px 16px 80px}
+#va-drawer:empty{display:none}
+#va-drawer section{border-top:1px solid var(--line);padding:12px 0}
+
+/* ---------- Variant B: list and map ---------- */
+.vb{display:grid;grid-template-columns:430px 1fr;height:100vh}
+#vb-col{display:flex;flex-direction:column;border-right:1px solid var(--line);background:#fff;min-height:0}
+.vb-head{padding:10px 12px;border-bottom:1px solid var(--line)}
+.vb-body{flex:1;overflow:auto;padding:12px 12px 80px}
+.vb-filters{display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:#faf9f7;border-bottom:1px solid var(--line)}
+.vb-filters .fc{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.vb-mapwrap{position:relative}
+.card{display:flex;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer;background:#fff}
+.card:hover{border-color:#bbb} .card.sel{box-shadow:0 0 0 2px var(--accent) inset}
+.thumb{width:84px;height:64px;object-fit:cover;border-radius:6px;background:#e5e5e5;flex:none}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-top:8px}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;padding:6px 10px}
+.tabs button.on{border-bottom-color:var(--accent);font-weight:600}
+.stack-step{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+.stack-step.done{background:#f0fdf4} .stack-step.todo{opacity:.45}
+.vb-body section{padding:10px 0;border-bottom:1px solid var(--line)}
+
+/* ---------- Variant C: map with bottom sheet ---------- */
+.vc{position:relative;height:100vh}
+.vc-float{position:absolute;top:12px;left:56px;right:12px;z-index:1000;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pillbox{background:#fff;border-radius:99px;padding:6px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.2);border:0}
+.pillbox .fc{display:inline-flex;gap:4px;align-items:center}
+.fab{position:absolute;right:16px;bottom:230px;z-index:1000;border-radius:99px;padding:10px 18px;background:var(--accent);color:#fff;border:0;font-weight:600;box-shadow:0 3px 10px rgba(0,0,0,.3)}
+#vc-carousel{position:absolute;left:0;right:0;bottom:64px;z-index:1000;display:flex;gap:10px;overflow-x:auto;padding:4px 12px}
+.vc-card{flex:none;width:270px;background:#fff;border-radius:12px;padding:10px;box-shadow:0 2px 10px rgba(0,0,0,.25);cursor:pointer;display:flex;gap:8px}
+.vc-card.sel{box-shadow:0 0 0 3px var(--accent)}
+#vc-sheet:empty{display:none}
+#vc-sheet{position:absolute;left:50%;transform:translateX(-50%);bottom:0;width:min(780px,100%);height:64vh;background:#fff;border-radius:16px 16px 0 0;z-index:1100;box-shadow:0 -6px 20px rgba(0,0,0,.2);display:flex;flex-direction:column}
+.grab{width:44px;height:5px;background:#ccc;border-radius:3px;margin:8px auto 4px;flex:none}
+.sheet-body{overflow:auto;padding:0 18px 80px}
+details{border-top:1px solid var(--line);padding:10px 0} summary{cursor:pointer;font-weight:600}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modal"></div>
+<div id="switcher"></div>
+<script>
+const TODAY = '2026-10-23';
+const CONFIGS = ['1RK','1BHK','2BHK','3BHK','4BHK+'];
+const STATUSES = ['To call','Visit scheduled','Visited','Shortlisted','Rejected'];
+const STATUS_COLOR = {'To call':'#6b7280','Visit scheduled':'#2563eb','Visited':'#7c3aed','Shortlisted':'#16a34a','Rejected':'#dc2626'};
+const RATINGS = [['safety','Safety'],['water','Water supply'],['location','Location'],['condition','Condition'],['light','Natural light']];
+const KEYS = [
+  {key:'society',label:'Society / building name',type:'text'},
+  {key:'locality',label:'Locality',type:'text'},
+  {key:'configuration',label:'Configuration',type:'enum',opts:CONFIGS},
+  {key:'listedBy',label:'Listed by',type:'enum',opts:['Owner','Dealer']},
+  {key:'brokerName',label:'Broker name',type:'text'},
+  {key:'rent',label:'Rent (₹/month)',type:'num'},
+  {key:'maintenance',label:'Maintenance (₹/month)',type:'num'},
+  {key:'deposit',label:'Deposit',type:'num'},
+  {key:'brokerage',label:'Brokerage fee',type:'num'},
+  {key:'carpetArea',label:'Carpet area (sq ft)',type:'num'},
+  {key:'superArea',label:'Super built-up area (sq ft)',type:'num'},
+  {key:'bathrooms',label:'Bathrooms',type:'num'},
+  {key:'floor',label:'Floor / total floors',type:'text'},
+  {key:'furnishing',label:'Furnishing',type:'enum',opts:['Unfurnished','Semi-furnished','Fully furnished']},
+  {key:'parking',label:'Parking',type:'enum',opts:['Yes','No']},
+  {key:'lift',label:'Lift',type:'enum',opts:['Yes','No']},
+  {key:'availableFrom',label:'Available from',type:'text'},
+  {key:'otherDetails',label:'Other details',type:'long'},
+  {key:'lat',label:'Lat',type:'num'},
+  {key:'long',label:'Long',type:'num'},
+];
+const REAL_LINK = 'https://www.99acres.com/2-bhk-bedroom-apartment-flat-for-rent-in-ahad-excellencia-chikkanayakanahalli-bangalore-south-1160-sqft-spid-M93900012';
+const AHAD_PHOTOS = [
+  'https://imagecdn.99acres.com/media1/41417/2/828342725O-1787988609938.jpg',
+  'https://imagecdn.99acres.com/media1/41417/2/828342709O-1787988602450.jpg',
+  'https://imagecdn.99acres.com/media1/41417/2/828342885O-1787988611091.jpg',
+  'https://imagecdn.99acres.com/media1/41417/2/828342755O-1787988606552.jpg',
+  'https://imagecdn.99acres.com/media1/41417/2/828342809O-1787988606433.jpg',
+];
+// A good reply, shaped like the 07 resolution. "2 BHK" and "38,999" show the yellow auto-fix.
+const SAMPLE_GOOD = '```json\n' + JSON.stringify({
+  society:'Ahad Excellencia', locality:'Chikkanayakanahalli, Sarjapur Road', configuration:'2 BHK', listedBy:'Dealer',
+  brokerName:null, rent:'38,999', maintenance:null, deposit:117000, brokerage:null, carpetArea:null, superArea:1160,
+  bathrooms:2, floor:'4 of 4', furnishing:'Semi-furnished', parking:'Yes', lift:null, availableFrom:'Immediately',
+  otherDetails:'East facing; 2 balconies; full power backup; wardrobe, geyser, modular kitchen, chimney',
+  photos:AHAD_PHOTOS.slice(0,3), lat:12.882808, long:77.690011
+}, null, 1) + '\n```';
+const SAMPLE_BAD = '```json\n{"error": "could_not_read"}\n```';
+
+function blankListing(o){
+  return Object.assign({id:'',society:null,locality:null,configuration:null,status:'To call',listedBy:null,brokerName:null,
+    brokerPhone:'',ownerName:'',ownerPhone:'',rent:null,maintenance:null,deposit:null,brokerage:null,carpetArea:null,
+    superArea:null,bathrooms:null,floor:null,furnishing:null,parking:null,lift:null,availableFrom:null,otherDetails:null,
+    ratings:{safety:null,water:null,location:null,condition:null,light:null},pros:[],cons:[],notes:[],photos:[],
+    link:'',lat:null,long:null,precision:'building',dateAdded:TODAY,addedBy:'Abhishek'}, o);
+}
+
+const state = {
+  user: null,
+  budget: 45000, // Settings tab
+  listings: [
+    blankListing({id:'L-ahad1',society:'Ahad Excellencia',locality:'Chikkanayakanahalli, Sarjapur Road',configuration:'2BHK',
+      listedBy:'Dealer',rent:38999,deposit:117000,superArea:1160,bathrooms:2,floor:'4 of 4',furnishing:'Semi-furnished',
+      parking:'Yes',availableFrom:'Immediately',otherDetails:'East facing; 2 balconies; full power backup',
+      photos:AHAD_PHOTOS,link:REAL_LINK,lat:12.882808,long:77.690011,dateAdded:'2026-10-21'}),
+    // Made-up listings from here on.
+    blankListing({id:'L-sob22',society:'Sobha Dream Acres',locality:'Panathur',configuration:'2BHK',status:'Visited',listedBy:'Owner',
+      rent:34000,maintenance:3500,deposit:150000,carpetArea:820,bathrooms:2,floor:'9 of 14',furnishing:'Unfurnished',parking:'Yes',lift:'Yes',
+      ownerName:'Ramesh',ownerPhone:'98450 00000',ratings:{safety:4,water:3,location:4,condition:3,light:5},
+      pros:['Big balcony','Club house'],cons:['Water tanker in summer'],
+      notes:[{by:'Priya',date:'2026-10-20',text:'Owner wants 2 months of rent as deposit, not 4.'}],
+      lat:12.9370,long:77.7140,precision:'society',addedBy:'Priya',dateAdded:'2026-10-19'}),
+    blankListing({id:'L-pre31',society:'Prestige Lakeside Habitat',locality:'Varthur',configuration:'3BHK',listedBy:'Dealer',brokerName:'Suresh',
+      rent:52000,maintenance:5000,deposit:300000,brokerage:52000,superArea:1650,bathrooms:3,floor:'6 of 18',furnishing:'Semi-furnished',
+      parking:'Yes',lift:'Yes',lat:12.9480,long:77.7440,dateAdded:'2026-10-22'}),
+    blankListing({id:'L-sal11',society:'Salarpuria Greenage',locality:'Bommanahalli',configuration:'1BHK',status:'Rejected',listedBy:'Owner',
+      rent:22000,maintenance:2000,bathrooms:1,floor:'2 of 12',furnishing:'Fully furnished',ratings:{safety:3,water:2,location:2,condition:3,light:2},
+      cons:['Faces the main road','Noisy'],lat:12.9020,long:77.6290,dateAdded:'2026-10-18'}),
+    blankListing({id:'L-pur21',society:'Purva Skywood',locality:'Harlur',configuration:'2BHK',status:'Visit scheduled',listedBy:'Dealer',
+      rent:41000,maintenance:4000,bathrooms:2,floor:'11 of 15',furnishing:'Semi-furnished',parking:'Yes',lift:'Yes',
+      notes:[{by:'Abhishek',date:'2026-10-22',text:'Visit on Saturday 11 am. Broker sends the location pin.'}],
+      lat:12.9050,long:77.6700,precision:'locality',dateAdded:'2026-10-22'}),
+    blankListing({id:'L-kai01',society:'Independent house',locality:'Kaikondrahalli',configuration:'1RK',status:'Shortlisted',listedBy:'Owner',
+      rent:null,bathrooms:1,floor:'1 of 2',furnishing:'Unfurnished',otherDetails:'Rent not on the listing. Ask the owner.',
+      pros:['Quiet lane'],lat:12.9120,long:77.6810,precision:'locality',addedBy:'Priya',dateAdded:'2026-10-20'}),
+  ],
+  places: [ // made up
+    {name:'Office',address:'Embassy Tech Village, Devarabeesanahalli',lat:12.9300,long:77.6880,precision:'building',addedBy:'Abhishek'},
+    {name:'School',address:'Near Kasavanahalli lake',lat:12.8950,long:77.6950,precision:'locality',addedBy:'Priya'},
+  ],
+  f: null,
+  mode: null,  // null | 'detail' | 'add' | 'places'
+  sel: null, moving: null, dTab: 'overview', bTab: 'list', add: null,
+};
+function resetFilters(){ state.f = {max: state.budget, configs: new Set(CONFIGS), shortOnly:false, showRejected:false, q:''}; }
+resetFilters();
+
+// ---------- helpers ----------
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rs = n => n == null || n === '' ? 'not given' : '₹' + Number(n).toLocaleString('en-IN');
+const show = v => v == null || v === '' ? '<span class="muted">not given</span>' : esc(v);
+const byId = id => state.listings.find(l => l.id === id);
+const total = l => l.rent == null ? null : l.rent + (l.maintenance || 0);
+function overall(l){ const v = Object.values(l.ratings).filter(x => x != null); return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length*10)/10 : null; }
+const overallText = l => overall(l) == null ? 'not rated' : '★ ' + overall(l) + ' / 5';
+const overBudget = l => total(l) != null && total(l) > state.budget;
+const statusChip = l => `<span class="status" style="background:${STATUS_COLOR[l.status]}">${l.status}</span>`;
+const short = n => n == null ? '₹?' : '₹' + Math.round(n/1000) + 'k';
+const noteText = n => `${n.by}, ${n.date}: ${n.text}`;
+function passes(l){
+  const f = state.f;
+  if (!f.showRejected && l.status === 'Rejected') return false;
+  if (f.shortOnly && l.status !== 'Shortlisted') return false;
+  if (l.configuration && !f.configs.has(l.configuration)) return false;
+  const t = total(l);
+  if (t != null && f.max !== '' && f.max != null && t > Number(f.max)) return false;
+  if (f.q && !((l.society||'') + ' ' + (l.locality||'')).toLowerCase().includes(f.q.toLowerCase())) return false;
+  return true;
+}
+const shown = () => state.listings.filter(passes);
+const countText = () => `${shown().length} of ${state.listings.length} listings shown`;
+function km(a, b){
+  const R = 6371, r = x => x*Math.PI/180, dLat = r(b.lat-a.lat), dLon = r(b.long-a.long);
+  const h = Math.sin(dLat/2)**2 + Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLon/2)**2;
+  return Math.round(2*R*Math.asin(Math.sqrt(h))*10)/10;
+}
+const nearText = l => state.places.map(p => `${esc(p.name)} ${km(l,p)} km`).join(' · ');
+function fakeGeocode(text){ // stub for Nominatim
+  let h = 0; for (const c of text) h = (h*31 + c.charCodeAt(0)) | 0;
+  return {lat: 12.91 + ((h % 300) / 10000), lng: 77.69 + (((h >> 8) % 300) / 10000)};
+}
+const prompt1 = link => `Open this rental listing: ${link || '<link>'}
+Reply with one JSON object in a \`\`\`json block and nothing else.
+Keys: society, locality, configuration (1RK|1BHK|2BHK|3BHK|4BHK+),
+listedBy (Owner|Dealer), brokerName, rent, maintenance, deposit,
+brokerage (numbers in rupees), carpetArea, superArea (sq ft),
+bathrooms, floor (like "4 of 4"),
+furnishing (Unfurnished|Semi-furnished|Fully furnished),
+parking (Yes|No), lift (Yes|No), availableFrom, otherDetails,
+photos (full-size image links of this flat only), lat, long.
+Write null for anything the page does not show. Do not guess.
+If you cannot open the page, reply {"error": "could_not_read"}.`;
+
+function parseReply(text){
+  const m = text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/);
+  if (!m) return {fail:'No JSON found in the reply.'};
+  let o; try { o = JSON.parse(m[1]); } catch (e) { return {fail:'The JSON in the reply is broken.'}; }
+  if (o.error) return {fail:'Claude could not read the page.'};
+  const data = {}, fixed = {};
+  const norm = s => String(s).toLowerCase().replace(/[^a-z0-9+]/g,'');
+  for (const k of KEYS){
+    let v = o[k.key] === undefined ? null : o[k.key];
+    if (k.type === 'num' && typeof v === 'string'){ const n = Number(v.replace(/[^\d.]/g,'')); v = v.trim() && !isNaN(n) ? n : null; if (v != null) fixed[k.key] = true; }
+    if (k.type === 'enum' && v != null && !k.opts.includes(v)){ const hit = k.opts.find(x => norm(x) === norm(v)); if (hit){ v = hit; fixed[k.key] = true; } else v = null; }
+    data[k.key] = v;
+  }
+  data.photos = Array.isArray(o.photos) ? o.photos : (o.photos ? String(o.photos).split(';').map(s=>s.trim()) : []);
+  if (data.rent == null && !data.locality) return {fail:'The reply has no rent and no locality.'};
+  return {data, fixed};
+}
+
+// ---------- map ----------
+let map, markerLayer, placeLayer, ringLayer;
+function mountMap(){
+  if (map) map.remove();
+  map = L.map('map').setView([12.91, 77.69], 13);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
+  ringLayer = L.layerGroup().addTo(map); placeLayer = L.layerGroup().addTo(map); markerLayer = L.layerGroup().addTo(map);
+  const pts = [...state.listings, ...state.places].map(p => [p.lat, p.long]);
+  map.fitBounds(pts, {padding:[60,60]});
+  drawMarkers();
+}
+function drawMarkers(){
+  if (!map) return;
+  markerLayer.clearLayers(); placeLayer.clearLayers(); ringLayer.clearLayers();
+  for (const l of shown()){
+    const sel = state.sel === l.id, moving = state.moving === l.id;
+    const icon = L.divIcon({className:'', iconSize:[90,26], iconAnchor:[45,26],
+      html:`<div class="pinwrap"><div class="pin ${sel?'sel':''} ${moving?'moving':''}" style="--c:${STATUS_COLOR[l.status]}">${short(total(l))} · ${l.configuration||'?'}</div></div>`});
+    const m = L.marker([l.lat, l.long], {icon, draggable: moving, zIndexOffset: sel ? 1000 : 0}).addTo(markerLayer);
+    m.on('click', () => ACT.select(l.id));
+    m.on('dragend', () => { const p = m.getLatLng(); l.lat = +p.lat.toFixed(6); l.long = +p.lng.toFixed(6); l.precision = 'building'; render(); });
+    if (sel && l.precision !== 'building')
+      L.circle([l.lat, l.long], {radius: l.precision === 'society' ? 200 : 600, dashArray:'6 6', color:'#f59e0b', fillOpacity:.06}).addTo(ringLayer);
+  }
+  for (const p of state.places){
+    L.marker([p.lat, p.long], {icon: L.divIcon({className:'', iconSize:[26,26], iconAnchor:[13,13], html:`<div class="ppin" title="${esc(p.name)}">★</div>`})})
+      .bindTooltip(p.name, {permanent:true, direction:'right', offset:[12,0]}).addTo(placeLayer);
+  }
+}
+function updateCount(){ document.querySelectorAll('.count').forEach(e => e.textContent = countText()); }
+const legend = (style = '') => `<div class="legend" style="${style}">${STATUSES.map(s=>`<span><i class="dot" style="background:${STATUS_COLOR[s]}"></i>${s}</span>`).join('')}<span>★ Place</span></div>`;
+
+// ---------- shared pieces ----------
+function filterControls(){
+  const f = state.f;
+  return `<label class="fc">Max ₹/month <input type="number" data-filter="max" value="${esc(f.max)}" style="width:90px"></label>
+  <span class="fc">${CONFIGS.map(c=>`<label><input type="checkbox" data-filter="config" data-arg="${c}" ${f.configs.has(c)?'checked':''}>${c}</label>`).join(' ')}</span>
+  <label class="fc"><input type="checkbox" data-filter="short" ${f.shortOnly?'checked':''}>Shortlisted only</label>
+  <label class="fc"><input type="checkbox" data-filter="rej" ${f.showRejected?'checked':''}>Show rejected</label>
+  <input type="search" data-filter="q" placeholder="Search society or locality" value="${esc(f.q)}">
+  <span class="count muted small">${countText()}</span>`;
+}
+function img(src, cls){ return `<img class="${cls||''}" src="${esc(src)}" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph ${cls||''}',textContent:'photo'}))">`; }
+const sec = {
+  header: l => `<div class="dh"><div><div class="title">${esc(l.society||'No society name')}</div><div class="muted">${esc(l.locality||'')}</div></div>${statusChip(l)}</div>
+    <div class="big"><b>${rs(total(l))}</b> a month in total ${overBudget(l)?'<span class="tag-bad">Over budget</span>':''} · ${l.configuration||'?'} · ${overallText(l)}</div>
+    ${passes(l)?'':'<div class="hidden-note">Your filters hide this listing on the map.</div>'}
+    ${l.link?`<a href="${esc(l.link)}" target="_blank" class="small">Open the listing page</a>`:''}`,
+  photos: l => `<div class="photos">${l.photos.map(p=>`<a href="${esc(p)}" target="_blank">${img(p)}</a>`).join('') || '<span class="muted">No photos yet.</span>'}</div>
+    <label class="small">Upload a photo <input type="file" accept="image/*" data-upload="${l.id}"></label> <span class="muted small">(goes to the shared Drive folder)</span>`,
+  status: l => `<label>Status <select data-edit="status">${STATUSES.map(s=>`<option ${s===l.status?'selected':''}>${s}</option>`).join('')}</select></label>`,
+  ratings: l => RATINGS.map(([k,lab]) => `<div class="raterow"><span>${lab}</span><span class="rate">${[1,2,3,4,5].map(n=>`<button data-act="rate" data-arg="${k}:${n}" class="${l.ratings[k]===n?'on':''}">${n}</button>`).join('')}</span></div>`).join('')
+    + `<div class="raterow"><b>Overall</b><b>${overallText(l)}</b></div><div class="muted small">One shared set of ratings. Anyone can change them.</div>`,
+  contacts: l => `<dl class="kv"><dt>Listed by</dt><dd>${show(l.listedBy)}</dd><dt>Broker name</dt><dd>${show(l.brokerName)}</dd></dl>
+    <div class="formgrid" style="margin-top:8px">
+      <label>Broker phone<input data-edit="brokerPhone" value="${esc(l.brokerPhone)}"></label>
+      <label>Owner name<input data-edit="ownerName" value="${esc(l.ownerName)}"></label>
+      <label>Owner phone<input data-edit="ownerPhone" value="${esc(l.ownerPhone)}"></label>
+    </div>`,
+  money: l => `<dl class="kv"><dt>Rent</dt><dd>${rs(l.rent)}</dd><dt>Maintenance</dt><dd>${rs(l.maintenance)}</dd>
+    <dt>Total a month</dt><dd><b>${rs(total(l))}</b> <span class="muted small">(budget ${rs(state.budget)})</span></dd>
+    <dt>Deposit</dt><dd>${rs(l.deposit)}</dd><dt>Brokerage fee</dt><dd>${rs(l.brokerage)}</dd></dl>`,
+  facts: l => `<dl class="kv"><dt>Carpet area</dt><dd>${l.carpetArea?l.carpetArea+' sq ft':show(null)}</dd><dt>Super built-up</dt><dd>${l.superArea?l.superArea+' sq ft':show(null)}</dd>
+    <dt>Bathrooms</dt><dd>${show(l.bathrooms)}</dd><dt>Floor</dt><dd>${show(l.floor)}</dd><dt>Furnishing</dt><dd>${show(l.furnishing)}</dd>
+    <dt>Parking</dt><dd>${show(l.parking)}</dd><dt>Lift</dt><dd>${show(l.lift)}</dd><dt>Available from</dt><dd>${show(l.availableFrom)}</dd>
+    <dt>Other details</dt><dd>${show(l.otherDetails)}</dd></dl>`,
+  proscons: l => ['pros','cons'].map(k => `<div style="margin-bottom:8px"><b>${k==='pros'?'Pros':'Cons'}</b><div>${l[k].map((p,i)=>`<span class="chip">${esc(p)}<button data-act="rmchip" data-arg="${k}:${i}">×</button></span>`).join('')}</div>
+    <input data-chip="${k}" placeholder="Type a ${k==='pros'?'pro':'con'}, press Enter" style="width:100%"></div>`).join(''),
+  notes: l => `<ul class="notes">${l.notes.map(n=>`<li><span class="muted small">${esc(n.by)}, ${n.date}</span><br>${esc(n.text)}</li>`).join('') || '<li class="muted">No notes yet.</li>'}</ul>
+    <textarea id="noteText" placeholder="Write a note. The app adds your name and the date."></textarea><div class="row"><button data-act="addNote">Add note</button></div>`,
+  distances: l => `<ul style="margin:0;padding-left:18px">${state.places.map(p=>`<li>${esc(p.name)}: <b>${km(l,p)} km</b> <span class="muted small">straight line</span></li>`).join('') || '<li class="muted">No places yet.</li>'}</ul>
+    <button class="link small" data-act="openPlaces">Add a place</button>`,
+  record: l => `<dl class="kv"><dt>Listing id</dt><dd>${l.id}</dd><dt>Date added</dt><dd>${l.dateAdded}</dd><dt>Added by</dt><dd>${esc(l.addedBy)}</dd>
+    <dt>Pin precision</dt><dd>${l.precision}</dd><dt>Lat, Long</dt><dd>${l.lat}, ${l.long}</dd></dl>
+    <div class="row"><button data-act="movePin">${state.moving===l.id?'Done moving':'Move pin'}</button>${state.moving===l.id?'<span class="small muted">Drag the orange pin on the map.</span>':''}</div>`,
+};
+const COLS = [
+  ['Listing id',l=>l.id],['Society / building name',l=>l.society],['Locality',l=>l.locality],['Configuration',l=>l.configuration],['Status',l=>l.status],
+  ['Listed by',l=>l.listedBy],['Broker name',l=>l.brokerName],['Broker phone',l=>l.brokerPhone],['Owner name',l=>l.ownerName],['Owner phone',l=>l.ownerPhone],
+  ['Rent (₹/month)',l=>l.rent],['Maintenance (₹/month)',l=>l.maintenance],['Total monthly cost',l=>total(l)],['Deposit',l=>l.deposit],['Brokerage fee',l=>l.brokerage],
+  ['Carpet area (sq ft)',l=>l.carpetArea],['Super built-up area (sq ft)',l=>l.superArea],['Bathrooms',l=>l.bathrooms],['Floor / total floors',l=>l.floor],
+  ['Furnishing',l=>l.furnishing],['Parking',l=>l.parking],['Lift',l=>l.lift],['Available from',l=>l.availableFrom],['Other details',l=>l.otherDetails],
+  ...RATINGS.map(([k,lab]) => [lab, l=>l.ratings[k]]),['Overall rating',l=>overall(l)],['Pros',l=>l.pros.join('; ')],['Cons',l=>l.cons.join('; ')],
+  ['Notes',l=>l.notes.map(noteText).join(' | ')],['Photos',l=>l.photos.length ? l.photos.length + ' links' : ''],['Listing link',l=>l.link],
+  ['Lat',l=>l.lat],['Long',l=>l.long],['Pin precision',l=>l.precision],['Date added',l=>l.dateAdded],['Added by',l=>l.addedBy],
+];
+const allFields = l => `<table class="alltable">${COLS.map(([n,g],i)=>`<tr><td>${i+1}</td><td>${n}</td><td>${show(g(l))}</td></tr>`).join('')}</table>`;
+const placesPanel = () => `<h3>Important places</h3><p class="muted small">Everyone sees these. They show as ★ on the map. Filters never hide them.</p>
+  <ul style="padding-left:18px">${state.places.map(p=>`<li><b>${esc(p.name)}</b><br><span class="muted small">${esc(p.address)} · pin: ${p.precision} · added by ${esc(p.addedBy)}</span></li>`).join('')}</ul>
+  <h4>Add a place</h4><div class="formgrid"><label>Name<input id="placeName" placeholder="Office"></label><label>Address<input id="placeAddr" placeholder="Street, area, city"></label></div>
+  <div class="row"><button class="primary" data-act="savePlace">Add place</button><span class="muted small">The app finds the map spot from the address.</span></div>`;
+function cardHTML(l, cls){
+  return `<div class="${cls} ${state.sel===l.id?'sel':''}" data-act="select" data-arg="${l.id}">
+    ${l.photos[0] ? img(l.photos[0], 'thumb') : '<div class="thumb ph">no photo</div>'}
+    <div style="min-width:0"><div><b>${esc(l.society||'No name')}</b> ${statusChip(l)}</div>
+    <div class="muted small">${esc(l.locality||'')}</div>
+    <div>${rs(total(l))}/mo ${overBudget(l)?'<span class="tag-bad">Over</span>':''} · ${l.configuration||'?'} · ${overallText(l)}</div>
+    <div class="muted small">${nearText(l)}</div></div></div>`;
+}
+const sortedShown = () => shown().sort((a,b) => (total(a) ?? 1e9) - (total(b) ?? 1e9));
+
+// add flow
+const STEP_TITLES = {link:'Paste the link', reply:"Get Claude's reply", bookmarklet:'Bookmarklet', review:'Review and save'};
+const addSteps = () => state.add.by === 'hand' ? ['review'] : ['link','reply', ...(state.add.usedBm ? ['bookmarklet'] : []), 'review'];
+function stepBody(step){
+  const a = state.add;
+  if (step === 'link') return `<p>Paste the link of a rental listing. Any site works.</p>
+    <input data-addlink style="width:100%" value="${esc(a.link)}" placeholder="https://www.99acres.com/...">
+    <div class="row"><button class="primary" data-act="toReply">Next</button><button class="link" data-act="addHand">Add by hand instead</button></div>
+    <button class="proto" data-act="sampleLink">Prototype: fill in the real 99acres link</button>`;
+  if (step === 'reply') return `<p><b>1.</b> Copy this prompt into Claude web. <button data-act="copy">Copy prompt</button> <a href="https://claude.ai/new" target="_blank">Open Claude web</a></p>
+    <pre class="prompt">${esc(prompt1(a.link))}</pre>
+    <p><b>2.</b> Paste Claude's whole reply here.</p>
+    <textarea data-addreply rows="6">${esc(a.reply)}</textarea>
+    <div class="row"><button class="primary" data-act="check">Check reply</button><button class="link small" data-act="toBookmarklet">Reply looks wrong?</button></div>
+    <div class="row"><button class="proto" data-act="sample" data-arg="good">Prototype: paste a good reply</button><button class="proto" data-act="sample" data-arg="bad">Prototype: paste a "could not read" reply</button></div>`;
+  if (step === 'bookmarklet') return `${a.fail?`<p class="err">${esc(a.fail)}</p>`:''}
+    <p>Claude could not use the link. Send it the page itself.</p>
+    <ol><li>One time only: drag <a class="bm" href="javascript:alert('Prototype. The real bookmarklet reads the page and copies a prompt.')">Rental helper</a> to your bookmarks bar.</li>
+    <li>Open the listing page in Chrome. ${a.link?`<a href="${esc(a.link)}" target="_blank">Open it</a>`:''}</li>
+    <li>Click <b>Rental helper</b> in the bookmarks bar. It copies a new prompt.</li>
+    <li>Paste that prompt into Claude web. Paste Claude's reply below.</li></ol>
+    <textarea data-addreply rows="5">${esc(a.reply)}</textarea>
+    <div class="row"><button class="primary" data-act="check">Check reply</button><button data-act="askLocal">Ask my local Claude</button></div>
+    <p class="muted small">Have Claude Code? Paste the copied prompt in the box in place of a reply, then click Ask my local Claude. It costs up to $0.10.</p>
+    <div class="row"><button class="proto" data-act="sample" data-arg="good">Prototype: paste a good reply</button></div>`;
+  // review
+  const field = k => {
+    const v = a.data[k.key], cls = a.fixed[k.key] ? 'fixed' : '';
+    if (k.type === 'enum') return `<label>${k.label}<select class="${cls}" data-addfield="${k.key}"><option value=""></option>${k.opts.map(o=>`<option ${o===v?'selected':''}>${o}</option>`).join('')}</select></label>`;
+    if (k.type === 'long') return `<label class="wide">${k.label}<textarea class="${cls}" data-addfield="${k.key}">${esc(v)}</textarea></label>`;
+    return `<label>${k.label}<input class="${cls}" data-addfield="${k.key}" value="${esc(v)}"></label>`;
+  };
+  return `<p>${a.by==='hand'?'Fill in what you know.':'Check each field. <span class="fixed">Yellow</span> means the app fixed the format.'} Nothing is saved until you click Save.</p>
+    <div class="formgrid">${KEYS.map(field).join('')}</div>
+    <h4 style="margin-top:12px">Photos</h4>
+    <div class="photos">${a.photos.map((p,i)=>`<div style="position:relative">${img(p)}<button class="x" style="position:absolute;top:0;right:0;background:#fff" data-act="rmphoto" data-arg="${i}">×</button></div>`).join('') || '<span class="muted">No photos.</span>'}</div>
+    <label class="small">Upload a photo <input type="file" accept="image/*" data-upload="new"></label>
+    <p class="muted small">Map pin: ${a.data.lat!=null && a.data.long!=null ? 'from the page (building)' : 'the app finds it from society + locality'}.</p>
+    <div class="row"><button class="primary" data-act="saveNew">Save listing</button><button data-act="close">Cancel</button></div>`;
+}
+const progress = () => { const st = addSteps(), i = st.indexOf(state.add.step);
+  return `<div class="progress">${st.map((s,j)=>`<span class="${j===i?'on':j<i?'done':''}">${j+1}. ${STEP_TITLES[s]}</span>`).join('')}</div>`; };
+
+// ---------- Variant A: map first, side drawer, add as a modal ----------
+const VA = {
+  name: 'Map first, side drawer',
+  panShift: () => [230, 0], // drawer covers the right 460px
+  shell: () => `<div class="va"><div class="va-top"><b>Rental map</b>${filterControls()}<span style="flex:1"></span>
+    <button data-act="openPlaces">★ Places</button><button class="primary" data-act="add">+ Add listing</button><span class="muted small">${esc(state.user||'')}</span></div>
+    <div class="va-main"><div id="map"></div><div id="va-drawer" data-scroll="va"></div>${legend()}</div></div>`,
+  render(){
+    const d = document.getElementById('va-drawer'), l = byId(state.sel);
+    if (state.mode === 'detail' && l) d.innerHTML = `<div style="text-align:right"><button class="x" data-act="close">×</button></div>${sec.header(l)}
+      <section>${sec.photos(l)}</section><section><h4>Status</h4>${sec.status(l)}</section><section><h4>Our ratings</h4>${sec.ratings(l)}</section>
+      <section><h4>Contacts</h4>${sec.contacts(l)}</section><section><h4>Pros and cons</h4>${sec.proscons(l)}</section><section><h4>Notes</h4>${sec.notes(l)}</section>
+      <section><h4>Distance to places</h4>${sec.distances(l)}</section><section><h4>Money</h4>${sec.money(l)}</section><section><h4>Flat details</h4>${sec.facts(l)}</section>
+      <section><h4>Record</h4>${sec.record(l)}</section>`;
+    else if (state.mode === 'places') d.innerHTML = `<div style="text-align:right"><button class="x" data-act="close">×</button></div>${placesPanel()}`;
+    else d.innerHTML = '';
+  },
+  modal: () => state.mode === 'add' ? `<div class="dh"><h3>${state.add.by==='hand'?'Add a listing by hand':'Add a listing'}</h3><button class="x" data-act="close">×</button></div>${progress()}${stepBody(state.add.step)}` : '',
+};
+
+// ---------- Variant B: list on the left, map on the right ----------
+const VB = {
+  name: 'List and map',
+  shell: () => `<div class="vb"><div id="vb-col"></div><div class="vb-mapwrap"><div id="map"></div>${legend()}</div></div>`,
+  renderList(){ const e = document.getElementById('vb-list'); if (e) e.innerHTML = sortedShown().map(l => cardHTML(l, 'card')).join('') || '<p class="muted">No listing matches your filters.</p>'; },
+  render(){
+    const c = document.getElementById('vb-col'), l = byId(state.sel);
+    if (state.mode === 'detail' && l){
+      const tabs = [['overview','Overview'],['take','Our take'],['contacts','Contacts'],['all','All 40 fields']];
+      const body = {
+        overview: `${sec.photos(l)}<section><h4>Money</h4>${sec.money(l)}</section><section><h4>Flat details</h4>${sec.facts(l)}</section><section><h4>Distance to places</h4>${sec.distances(l)}</section>`,
+        take: `<section>${sec.status(l)}</section><section><h4>Our ratings</h4>${sec.ratings(l)}</section><section><h4>Pros and cons</h4>${sec.proscons(l)}</section><section><h4>Notes</h4>${sec.notes(l)}</section>`,
+        contacts: sec.contacts(l),
+        all: `${allFields(l)}<section>${sec.record(l)}</section>`,
+      }[state.dTab];
+      c.innerHTML = `<div class="vb-head"><button class="link" data-act="close">← Back to the list</button><div style="margin-top:8px">${sec.header(l)}</div>
+        <div class="tabs">${tabs.map(([k,n])=>`<button class="${state.dTab===k?'on':''}" data-act="tab" data-arg="${k}">${n}</button>`).join('')}</div></div>
+        <div class="vb-body" data-scroll="vb-${state.dTab}">${body}</div>`;
+    } else if (state.mode === 'add'){
+      const st = addSteps(), i = st.indexOf(state.add.step);
+      c.innerHTML = `<div class="vb-head"><button class="link" data-act="close">← Cancel</button><h3 style="margin-top:6px">${state.add.by==='hand'?'Add a listing by hand':'Add a listing'}</h3></div>
+        <div class="vb-body" data-scroll="vb-add">${st.map((s,j)=> j<i ? `<div class="stack-step done">✓ <b>${STEP_TITLES[s]}</b> <button class="link small" data-act="back" data-arg="${s}">Change</button></div>`
+          : j===i ? `<div class="stack-step"><h3>${j+1}. ${STEP_TITLES[s]}</h3>${stepBody(s)}</div>` : `<div class="stack-step todo"><b>${j+1}. ${STEP_TITLES[s]}</b></div>`).join('')}</div>`;
+    } else {
+      c.innerHTML = `<div class="vb-head"><div class="dh"><b style="font-size:16px">Rental map</b><span class="muted small">${esc(state.user||'')}</span></div>
+        <div class="row"><button class="primary" data-act="add">+ Add listing</button></div>
+        <div class="tabs"><button class="${state.bTab==='list'?'on':''}" data-act="btab" data-arg="list">Listings</button><button class="${state.bTab==='places'?'on':''}" data-act="btab" data-arg="places">★ Places</button></div></div>
+        ${state.bTab==='list' ? `<div class="vb-filters">${filterControls()}</div><div class="vb-body" id="vb-list" data-scroll="vb-list"></div>` : `<div class="vb-body">${placesPanel()}</div>`}`;
+      this.renderList();
+    }
+  },
+};
+
+// ---------- Variant C: full map, card strip, bottom sheet ----------
+const VC = {
+  name: 'Map with bottom sheet',
+  panShift: () => [0, map.getSize().y * 0.32], // sheet covers the bottom 64%
+  shell: () => `<div class="vc"><div id="map"></div>
+    <div class="vc-float"><div class="pillbox"><b>Rental map</b><span class="muted small">${esc(state.user||'')}</span></div><div class="pillbox">${filterControls()}</div>
+    <button class="pillbox" data-act="openPlaces">★ Places</button></div>
+    <button class="fab" data-act="add">+ Add listing</button><div id="vc-carousel"></div><div id="vc-sheet"></div>${legend('bottom:auto;top:84px')}</div>`,
+  renderList(){ const e = document.getElementById('vc-carousel'); if (e) e.innerHTML = state.mode ? '' : sortedShown().map(l => cardHTML(l, 'vc-card')).join(''); },
+  render(){
+    const s = document.getElementById('vc-sheet'), l = byId(state.sel);
+    document.querySelector('.fab').style.display = state.mode ? 'none' : '';
+    const top = t => `<div class="grab"></div><div class="dh" style="padding:0 18px"><div>${t}</div><button class="x" data-act="close">×</button></div>`;
+    if (state.mode === 'detail' && l) s.innerHTML = `${top('')}<div class="sheet-body" data-scroll="vc">${sec.header(l)}<div style="margin:10px 0">${sec.photos(l)}</div>
+      <div class="row">${sec.status(l)}</div>
+      <details open><summary>Our ratings · ${overallText(l)}</summary>${sec.ratings(l)}</details>
+      <details open><summary>Distance to places</summary>${sec.distances(l)}</details>
+      <details><summary>Pros and cons (${l.pros.length + l.cons.length})</summary>${sec.proscons(l)}</details>
+      <details><summary>Notes (${l.notes.length})</summary>${sec.notes(l)}</details>
+      <details><summary>Contacts</summary>${sec.contacts(l)}</details>
+      <details><summary>Money · ${rs(total(l))} a month</summary>${sec.money(l)}</details>
+      <details><summary>Flat details</summary>${sec.facts(l)}</details>
+      <details><summary>Record and pin</summary>${sec.record(l)}</details></div>`;
+    else if (state.mode === 'add'){ const st = addSteps(), i = st.indexOf(state.add.step);
+      s.innerHTML = `${top(`<b>${state.add.by==='hand'?'Add by hand':'Add a listing'}</b> <span class="muted small">Step ${i+1} of ${st.length}: ${STEP_TITLES[state.add.step]}</span>`)}<div class="sheet-body" data-scroll="vc-add">${stepBody(state.add.step)}</div>`; }
+    else if (state.mode === 'places') s.innerHTML = `${top('')}<div class="sheet-body">${placesPanel()}</div>`;
+    else s.innerHTML = '';
+    this.renderList();
+  },
+};
+
+// ---------- wiring ----------
+const VARIANTS = {A: VA, B: VB, C: VC}, ORDER = ['A','B','C'];
+let cur = (k => VARIANTS[k] ? k : 'A')(new URLSearchParams(location.search).get('variant')), V = VARIANTS[cur];
+function render(){
+  const keep = {}; document.querySelectorAll('[data-scroll]').forEach(e => keep[e.dataset.scroll] = e.scrollTop);
+  V.render();
+  document.querySelectorAll('[data-scroll]').forEach(e => { if (keep[e.dataset.scroll]) e.scrollTop = keep[e.dataset.scroll]; });
+  const m = document.getElementById('modal');
+  if (!state.user) m.innerHTML = `<div class="modal-back"><div class="modal" style="width:420px"><h3>Welcome</h3>
+    <p>What is your name? The app puts it on listings you add and notes you write. It asks only once on this computer.</p>
+    <div class="row"><input id="nameInput" placeholder="Your name" style="flex:1"><button class="primary" data-act="setName">Start</button></div></div></div>`;
+  else { const html = V.modal ? V.modal() : ''; m.innerHTML = html ? `<div class="modal-back"><div class="modal" data-scroll="modal">${html}</div></div>` : ''; }
+}
+function mount(){
+  V = VARIANTS[cur];
+  document.getElementById('app').innerHTML = V.shell();
+  mountMap(); render();
+  document.getElementById('switcher').innerHTML = `<button data-sw="-1">‹</button><span>PROTOTYPE · ${cur} (${V.name})</span><button data-sw="1">›</button>`;
+  if (!state.user) setTimeout(() => document.getElementById('nameInput')?.focus(), 0);
+}
+function cycle(d){ cur = ORDER[(ORDER.indexOf(cur) + d + ORDER.length) % ORDER.length]; try { history.replaceState(null, '', '?variant=' + cur); } catch (e) {} mount(); }
+const curListing = () => byId(state.sel);
+
+const ACT = {
+  select: id => { const l = byId(id); state.sel = id; state.mode = 'detail'; state.dTab = 'overview'; state.moving = null; render(); drawMarkers(); const pt = map.latLngToContainerPoint([l.lat, l.long]).add(V.panShift ? V.panShift() : [0,0]); map.panTo(map.containerPointToLatLng(pt)); },
+  close: () => { state.mode = null; state.sel = null; state.moving = null; state.add = null; render(); drawMarkers(); },
+  add: () => { state.mode = 'add'; state.sel = null; state.moving = null; state.add = {by:'link', step:'link', link:'', reply:'', fail:null, data:null, fixed:{}, photos:[], usedBm:false}; render(); drawMarkers(); },
+  addHand: () => { state.mode = 'add'; state.sel = null; state.add = {by:'hand', step:'review', link:'', reply:'', data:Object.fromEntries(KEYS.map(k=>[k.key,null])), fixed:{}, photos:[]}; render(); drawMarkers(); },
+  sampleLink: () => { state.add.link = REAL_LINK; render(); },
+  toReply: () => { if (!state.add.link.trim()) return alert('Paste a listing link first.'); state.add.step = 'reply'; render(); },
+  copy: (_, btn) => { const done = t => btn.textContent = t; navigator.clipboard?.writeText(prompt1(state.add.link)).then(() => done('Copied'), () => done('Copy failed. Select the text.')); },
+  sample: k => { state.add.reply = k === 'good' ? SAMPLE_GOOD : SAMPLE_BAD; render(); },
+  check: () => { const a = state.add, r = parseReply(a.reply);
+    if (r.fail){ a.fail = r.fail; if (a.step === 'reply'){ a.step = 'bookmarklet'; a.usedBm = true; a.reply = ''; } render(); return; }
+    a.data = r.data; a.fixed = r.fixed; a.photos = r.data.photos; a.fail = null; a.step = 'review'; render(); },
+  askLocal: (_, btn) => { btn.disabled = true; btn.textContent = 'Local Claude is reading...'; setTimeout(() => { state.add.reply = SAMPLE_GOOD; ACT.check(); }, 1200); },
+  toBookmarklet: () => { const a = state.add; a.step = 'bookmarklet'; a.usedBm = true; a.fail = null; a.reply = ''; render(); },
+  back: s => { state.add.step = s; render(); },
+  rmphoto: i => { state.add.photos.splice(+i, 1); render(); },
+  saveNew: () => { const a = state.add, d = a.data; let lat = d.lat, lng = d.long, precision = 'building';
+    if (lat == null || lng == null){ const g = fakeGeocode((d.society||'') + ' ' + (d.locality||'')); lat = g.lat; lng = g.lng; precision = 'locality'; }
+    const l = blankListing({...d, id:'L-' + Math.random().toString(36).slice(2,7), lat, long:lng, precision, photos:a.photos, link:a.link, addedBy:state.user});
+    state.listings.push(l); state.add = null; ACT.select(l.id); },
+  rate: arg => { const l = curListing(), [k, n] = arg.split(':'); l.ratings[k] = l.ratings[k] === +n ? null : +n; render(); },
+  rmchip: arg => { const l = curListing(), [k, i] = arg.split(':'); l[k].splice(+i, 1); render(); },
+  addNote: () => { const t = document.getElementById('noteText').value.trim(); if (!t) return; curListing().notes.push({by:state.user, date:TODAY, text:t}); render(); },
+  movePin: () => { state.moving = state.moving ? null : state.sel; render(); drawMarkers(); },
+  openPlaces: () => { state.sel = null; state.moving = null; if (cur === 'B'){ state.mode = null; state.bTab = 'places'; } else state.mode = 'places'; render(); drawMarkers(); },
+  btab: t => { state.bTab = t; render(); },
+  tab: t => { state.dTab = t; render(); },
+  savePlace: () => { const name = document.getElementById('placeName').value.trim(), address = document.getElementById('placeAddr').value.trim();
+    if (!name || !address) return alert('Give the place a name and an address.');
+    const g = fakeGeocode(address); state.places.push({name, address, lat:g.lat, long:g.lng, precision:'locality', addedBy:state.user}); render(); drawMarkers(); },
+  setName: () => { const v = document.getElementById('nameInput').value.trim(); if (!v) return; state.user = v; mount(); },
+};
+
+document.addEventListener('click', e => {
+  const sw = e.target.closest('[data-sw]'); if (sw) return cycle(+sw.dataset.sw);
+  const t = e.target.closest('[data-act]'); if (!t || t.tagName === 'A') return;
+  ACT[t.dataset.act]?.(t.dataset.arg, t, e);
+});
+document.addEventListener('input', e => {
+  const t = e.target, f = state.f;
+  if (t.dataset.filter){
+    if (t.dataset.filter === 'max') f.max = t.value;
+    if (t.dataset.filter === 'config') t.checked ? f.configs.add(t.dataset.arg) : f.configs.delete(t.dataset.arg);
+    if (t.dataset.filter === 'short') f.shortOnly = t.checked;
+    if (t.dataset.filter === 'rej') f.showRejected = t.checked;
+    if (t.dataset.filter === 'q') f.q = t.value;
+    drawMarkers(); updateCount(); V.renderList?.();
+  }
+  if (t.hasAttribute('data-addlink')) state.add.link = t.value;
+  if (t.hasAttribute('data-addreply')) state.add.reply = t.value;
+  if (t.dataset.addfield){ const k = KEYS.find(x => x.key === t.dataset.addfield);
+    state.add.data[k.key] = t.value === '' ? null : k.type === 'num' ? Number(t.value) : t.value; t.classList.remove('fixed'); }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.edit){ curListing()[t.dataset.edit] = t.value; if (t.dataset.edit === 'status'){ render(); drawMarkers(); updateCount(); V.renderList?.(); } }
+  if (t.dataset.upload && t.files[0]){ const url = URL.createObjectURL(t.files[0]);
+    (t.dataset.upload === 'new' ? state.add.photos : byId(t.dataset.upload).photos).push(url); render(); V.renderList?.(); }
+});
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (e.key === 'Enter' && t.id === 'nameInput') return ACT.setName();
+  if (e.key === 'Enter' && t.dataset.chip){ const v = t.value.trim(); if (!v) return; const k = t.dataset.chip; curListing()[k].push(v); render(); document.querySelector(`[data-chip="${k}"]`)?.focus(); return; }
+  if (t.closest('input,textarea,select,[contenteditable]')) return;
+  if (e.key === 'ArrowLeft') cycle(-1);
+  if (e.key === 'ArrowRight') cycle(1);
+});
+// Screenshot hook: ?name=Abhishek&open=L-ahad1 or &add=review
+const qs = new URLSearchParams(location.search);
+if (qs.get('name')) state.user = qs.get('name');
+mount();
+if (qs.get('open')) ACT.select(qs.get('open'));
+if (qs.get('add')){ ACT.add(); state.add.link = REAL_LINK; if (qs.get('add') === 'review'){ state.add.reply = SAMPLE_GOOD; ACT.check(); } else { state.add.step = qs.get('add'); state.add.usedBm = qs.get('add') === 'bookmarklet'; render(); } }
+</script>
+</body>
+</html>
