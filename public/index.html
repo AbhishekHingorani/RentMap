@@ -27,6 +27,7 @@
         </header>
         <div class="side-actions">
           <button class="add-open" id="add-open" type="button" hidden>+ Add listing</button>
+          <button class="back-link" id="details-back" type="button" hidden>← Back to the list</button>
         </div>
         <div class="tab-bar side-tabs" id="side-tabs" role="tablist" aria-label="Left column">
           <button class="tab" id="side-tab-listings" type="button" role="tab" data-tab="listings" aria-controls="list-view" aria-selected="true">Listings</button>
@@ -74,6 +75,11 @@
             <label>
               <span>Address</span>
               <input name="address" required maxlength="200" placeholder="Embassy Tech Village, Outer Ring Road" autocomplete="off" />
+            </label>
+            <label>
+              <span>Coordinates <span class="place-optional">(optional)</span></span>
+              <input name="coordinates" maxlength="60" placeholder="23.0300, 72.5100" autocomplete="off" inputmode="decimal" />
+              <span class="place-hint">Right-click the spot in Google Maps to copy them. Leave empty to find the spot from the address.</span>
             </label>
             <button type="submit">Add the place</button>
             <p class="place-note" id="place-note" aria-live="polite"></p>

@@ -78,7 +78,7 @@ Claude never fills the 5 ratings.
 
 ### Places tab
 
-Important places shared by everyone: Name, Address, Lat, Long, Pin precision, Added by. A person adds a place in the app by name and address. The app finds its map spot.
+Important places shared by everyone: Name, Address, Lat, Long, Pin precision, Added by. A person adds a place in the app by name and address. The app finds its map spot, unless the person types coordinates like `23.0300, 72.5100`. Typed coordinates get the building Pin precision. A person can edit a place's name, address and coordinates. A new address gets a new map spot from the geocoder. A place has no id, so the Apps Script finds the row by the name, address, lat and long the person saw. If no row still holds them, someone changed the place first, and nothing is written. A place cannot be removed in the app yet.
 
 ### Settings tab
 
@@ -378,7 +378,7 @@ These are not decided. Each one needs the owner before that part is built.
 - **Road distance** by car or bike, in place of straight-line distance. Needs a free routing service for India.
 - **Small points the tickets do not settle:**
   - How notes are split inside the Notes cell.
-  - Whether a place can be edited or removed.
+  - Whether a place can be removed.
 
 ## Out of scope
 

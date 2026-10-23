@@ -37,12 +37,15 @@ import {
   RATING_COLUMNS,
   ROUGH_PIN_RADIUS_M,
   allFields,
+  balconiesOf,
+  balconyText,
   fieldText,
+  floorText,
   isRoughPin,
   itemsOf,
   photoLinks,
 } from "/lib/details.mjs";
-import { cityFrom, distancesFor, placesFromRows } from "/lib/places.mjs";
+import { cityFrom, coloredDistances, coordinatesText, distanceRanges, editPlaceBody, editedPlaceIn, parseCoordinates, placesFromRows, spotPlan } from "/lib/places.mjs";
 import {
   PHOTO_COLUMN,
   PHOTO_QUALITY,
@@ -97,6 +100,8 @@ const placeFormEl = document.getElementById("place-form");
 const placeNoteEl = document.getElementById("place-note");
 const sideTabsEl = document.getElementById("side-tabs");
 const addOpenEl = document.getElementById("add-open");
+// "Back to the list" sits next to "+ Add listing", so it stays in reach while the details scroll.
+const detailsBackEl = document.getElementById("details-back");
 const addViewEl = document.getElementById("add-view");
 const addStepsEl = document.getElementById("add-steps");
 
@@ -250,6 +255,115 @@ function photoImg(link, holder) {
   return img;
 }
 
+// --- Photo viewer ---
+
+// One dialog for the whole page. It shows one photo large, with the previous and next arrows and a strip
+// of all the listing's photos. The arrow keys move, Home and End jump, and Esc closes.
+const viewer = { dialog: null, links: [], index: 0, back: null };
+
+// Line icons on a 24 px grid, drawn with the text colour. The shapes follow the Lucide set.
+const ICONS = {
+  prev: '<path d="M15 5l-7 7 7 7"/>',
+  next: '<path d="M9 5l7 7-7 7"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  sofa: '<path d="M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3"/><path d="M2 16a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v1.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V11a2 2 0 0 0-4 0z"/><path d="M4 18v2M20 18v2"/>',
+  floor: '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12.65l9.17 4.16a2 2 0 0 0 1.66 0L22 12.65"/><path d="M2 17.65l9.17 4.16a2 2 0 0 0 1.66 0L22 17.65"/>',
+  balcony: '<path d="M3 10h18"/><path d="M3 21h18"/><path d="M5 10v11M9.5 10v11M14.5 10v11M19 10v11"/><path d="M7 10V5a5 5 0 0 1 10 0v5"/>',
+  pin: '<path d="M20 10c0 4.99-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 14.99 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+};
+
+function icon(name, size = 22) {
+  const span = el("span", "icon");
+  span.innerHTML = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+  return span;
+}
+
+function viewerButton(className, name, label, onClick) {
+  const button = el("button", `viewer-button ${className}`);
+  button.type = "button";
+  button.setAttribute("aria-label", label);
+  button.title = label;
+  button.append(icon(name));
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function makeViewer() {
+  const dialog = el("dialog", "viewer");
+  dialog.setAttribute("aria-label", "Photos");
+  dialog.innerHTML = `<div class="viewer-top"><p class="viewer-title"></p><p class="viewer-count" aria-live="polite"></p></div>
+    <div class="viewer-stage"><div class="viewer-frame"></div></div>
+    <ol class="viewer-strip"></ol>`;
+  dialog.querySelector(".viewer-top").append(viewerButton("viewer-close", "close", "Close (Esc)", () => dialog.close()));
+  const stage = dialog.querySelector(".viewer-stage");
+  stage.prepend(viewerButton("viewer-prev", "prev", "Previous photo (←)", () => showPhoto(viewer.index - 1)));
+  stage.append(viewerButton("viewer-next", "next", "Next photo (→)", () => showPhoto(viewer.index + 1)));
+  // A click on the dark space around the photo closes the viewer, as in most photo viewers.
+  stage.addEventListener("click", (event) => {
+    if (event.target === stage) dialog.close();
+  });
+  dialog.addEventListener("keydown", (event) => {
+    const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+    if (step) showPhoto(viewer.index + step);
+    else if (event.key === "Home") showPhoto(0);
+    else if (event.key === "End") showPhoto(viewer.links.length - 1);
+    else return;
+    event.preventDefault();
+  });
+  dialog.addEventListener("close", () => {
+    dialog.querySelector(".viewer-frame").replaceChildren();
+    dialog.querySelector(".viewer-strip").replaceChildren();
+    if (viewer.back?.isConnected) viewer.back.focus();
+  });
+  document.body.append(dialog);
+  return dialog;
+}
+
+function openViewer(links, index, title, back) {
+  viewer.dialog ??= makeViewer();
+  Object.assign(viewer, { links, back });
+  const dialog = viewer.dialog;
+  dialog.querySelector(".viewer-title").textContent = title || "";
+  dialog.querySelector(".viewer-strip").replaceChildren(
+    ...links.map((link, i) => {
+      const item = el("li");
+      const thumb = el("button", "viewer-thumb");
+      thumb.type = "button";
+      thumb.setAttribute("aria-label", `Photo ${i + 1}`);
+      thumb.append(photoImg(link, thumb));
+      thumb.addEventListener("click", () => showPhoto(i));
+      item.append(thumb);
+      return item;
+    }),
+  );
+  dialog.showModal();
+  showPhoto(index);
+}
+
+function showPhoto(index) {
+  const { dialog, links } = viewer;
+  if (index < 0 || index >= links.length) return;
+  viewer.index = index;
+  const frame = dialog.querySelector(".viewer-frame");
+  const img = photoImg(links[index], frame);
+  img.loading = "eager";
+  img.alt = `Photo ${index + 1} of ${links.length}`;
+  frame.replaceChildren(img);
+  dialog.querySelector(".viewer-count").textContent = `${index + 1} of ${links.length}`;
+  dialog.querySelector(".viewer-prev").disabled = index === 0;
+  dialog.querySelector(".viewer-next").disabled = index === links.length - 1;
+  dialog.querySelectorAll(".viewer-thumb").forEach((thumb, i) => {
+    if (i === index) {
+      thumb.setAttribute("aria-current", "true");
+      thumb.scrollIntoView({ block: "nearest", inline: "center" });
+    } else thumb.removeAttribute("aria-current");
+  });
+  // The next and previous photos start loading now, so an arrow press shows them at once.
+  for (const near of [links[index + 1], links[index - 1]]) {
+    if (near && !driveFileId(near)) new Image().src = photoSrc(near);
+  }
+}
+
 // --- Photo fallback ---
 
 // The photos the Apps Script sent, as data: URLs. The browser keeps them in this cache, so the next visit
@@ -321,16 +435,61 @@ function card(listing) {
   else if (state.places.length) body.append(distanceList(listing, "card-distances"));
 
   item.append(photo, body);
+  hoverLinks(item, () => state.markers.get(listing.id), ".pin", () => (listing.id === state.pickedId ? 1000 : 0));
   return item;
 }
 
-// The straight-line distance to each place, worked out each time it is drawn.
+// Pointing at a list item, or tabbing to it, lifts its pin on the map above the others and marks it.
+// The class goes straight on the pin element, so the picked look from setIcon stays as it is. The map does not move.
+function hoverLinks(item, markerOf, pinSelector, restZ) {
+  const show = (on) => {
+    const marker = markerOf();
+    if (!marker) return;
+    marker.setZIndexOffset(on ? 2000 : restZ());
+    marker.getElement()?.querySelector(pinSelector)?.classList.toggle("pin--hover", on);
+  };
+  item.addEventListener("mouseenter", () => show(true));
+  item.addEventListener("mouseleave", () => show(false));
+  item.addEventListener("focusin", () => show(true));
+  item.addEventListener("focusout", (event) => {
+    if (!item.contains(event.relatedTarget)) show(false);
+  });
+}
+
+// The straight-line distance to each place, worked out each time it is drawn. Its colour runs from green for
+// the nearest of all listings to red for the farthest.
 function distanceList(listing, className) {
   const list = el("ul", className);
-  for (const distance of distancesFor(listing, state.places)) {
+  for (const distance of coloredDistances(listing, state.places, distanceRanges(state.listings, state.places))) {
     const item = el("li");
-    item.append(el("span", "distance-place", distance.name), el("span", distance.text === NOT_GIVEN ? "not-given" : "", distance.text));
+    const value = el("span", distance.hue === null ? "not-given" : "distance-value", distance.text);
+    if (distance.hue !== null) value.style.setProperty("--hue", distance.hue);
+    item.append(el("span", "distance-place", distance.name), value);
     list.append(item);
+  }
+  return list;
+}
+
+// The facts that settle most choices, at the top of the details: furnishing, floor, balconies and distances.
+function highlights(listing) {
+  const list = el("ul", "highlights");
+  list.setAttribute("aria-label", "Key facts");
+  const chip = (iconName, text, kind, title) => {
+    const item = el("li", `highlight${kind ? ` highlight--${kind}` : ""}`);
+    if (title) item.title = title;
+    item.append(icon(iconName, 16), el("span", "", text));
+    list.append(item);
+    return item;
+  };
+  const furnishing = toText(listing.row.Furnishing);
+  chip("sofa", furnishing || `Furnishing ${NOT_GIVEN}`, furnishing ? "" : "missing");
+  chip("floor", floorText(listing), toText(listing.row["Floor / total floors"]) ? "" : "missing");
+  const balconies = balconiesOf(listing);
+  chip("balcony", balconyText(balconies), balconies === null ? "missing" : balconies > 0 ? "yes" : "no");
+  const ranges = distanceRanges(state.listings, state.places);
+  for (const distance of coloredDistances(listing, state.places, ranges)) {
+    const item = chip("pin", `${distance.name} ${distance.text}`, distance.hue === null ? "missing" : "distance", "Straight line. Green is the nearest of all listings, red the farthest.");
+    if (distance.hue !== null) item.style.setProperty("--hue", distance.hue);
   }
   return list;
 }
@@ -449,7 +608,12 @@ function photoSection(listing, detail) {
   const photos = el("div", "photos");
   links.forEach((link, index) => {
     const frame = el("div", "photo");
-    frame.append(photoImg(link, frame));
+    const open = el("button", "photo-open");
+    open.type = "button";
+    open.setAttribute("aria-label", `Open photo ${index + 1} of ${links.length}`);
+    open.append(photoImg(link, open));
+    open.addEventListener("click", () => openViewer(links, index, listing.society, open));
+    frame.append(open);
     if (take.canSave) {
       const remove = takeButton("×", `photo-remove-${index}`, take, () =>
         sendEdit({ action: "editList", id: listing.row["Listing id"], column: PHOTO_COLUMN, remove: link }),
@@ -692,7 +856,7 @@ function allFieldsPanel(listing, detail) {
   if (!detail.moving) move.disabled ||= Boolean(problem);
   actions.append(edit, move);
   parts.push(actions);
-  if (detail.moving) parts.push(el("p", "add-hint", "Drag the pin on the map to the right spot. The app saves it when you drop it."));
+  if (detail.moving) parts.push(el("p", "add-hint", "Drag the pin on the map to the right spot. The app saves it when you drop it. Or type the coordinates."), pinCoordinatesForm(listing, detail));
   else if (take.canSave && problem) parts.push(el("p", "add-hint", problem));
   parts.push(fieldsTable(listing, plainCell));
   return parts;
@@ -860,7 +1024,7 @@ function detailsHeader(listing) {
     link = el("p", "details-link not-given", `Listing page ${NOT_GIVEN}`);
   }
 
-  header.append(top, el("p", "details-locality", listing.locality || NOT_GIVEN), cost, facts, link);
+  header.append(top, el("p", "details-locality", listing.locality || NOT_GIVEN), cost, facts, highlights(listing), link);
   return header;
 }
 
@@ -880,7 +1044,7 @@ function markPin(id, picked) {
 // drafts keeps a half-typed pro or con. edit is the open Edit form, or null. moving is true while the pin is draggable.
 // busy is false, or the text to show while a call is out, like "Saving…".
 function freshDetail(id, notice) {
-  return { id, tab: 0, busy: false, message: null, notice, drafts: { Pros: "", Cons: "" }, gone: false, edit: null, moving: false };
+  return { id, tab: 0, busy: false, message: null, notice, drafts: { Pros: "", Cons: "" }, gone: false, edit: null, moving: false, pinDraft: "" };
 }
 
 function openDetails(id, { notice = "" } = {}) {
@@ -899,7 +1063,8 @@ function openDetails(id, { notice = "" } = {}) {
   listViewEl.hidden = true;
   detailsEl.hidden = false;
   detailsEl.scrollTop = 0;
-  detailsEl.querySelector(".back-link").focus();
+  detailsBackEl.hidden = false;
+  detailsBackEl.focus();
 
   if (listing.spot) {
     markPin(id, true);
@@ -933,17 +1098,13 @@ function renderDetails() {
   const focused = detailsEl.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
   const scroll = detailsEl.scrollTop;
 
-  const back = el("button", "back-link", "← Back to the list");
-  back.type = "button";
-  back.dataset.key = "back";
-  back.addEventListener("click", closeDetails);
   const listing = listingById(detail.id);
   if (detail.gone || !listing) {
     const gone = el("p", "add-error", "This listing is no longer in the sheet. The app took its pin off the map.");
     gone.setAttribute("role", "alert");
-    detailsEl.replaceChildren(back, gone);
+    detailsEl.replaceChildren(gone);
   } else {
-    const parts = [back, detailsHeader(listing)];
+    const parts = [detailsHeader(listing)];
     if (detail.notice) {
       const notice = el("p", "add-error", detail.notice);
       notice.setAttribute("role", "status");
@@ -1175,11 +1336,42 @@ async function saveEdit() {
   if (state.detail === detail) renderDetails();
 }
 
+// While the pin moves, the person may type the spot in place of dragging. pinDraft keeps the box text across redraws.
+function pinCoordinatesForm(listing, detail) {
+  const form = el("form", "pin-coordinates");
+  const label = el("label", "", "Coordinates");
+  const input = el("input");
+  Object.assign(input, { name: "coordinates", value: detail.pinDraft, maxLength: 60, autocomplete: "off", placeholder: "23.0300, 72.5100" });
+  input.inputMode = "decimal";
+  input.addEventListener("input", () => {
+    detail.pinDraft = input.value;
+  });
+  label.append(input);
+  const save = el("button", "add-secondary", "Save coordinates");
+  save.type = "submit";
+  save.disabled = detail.busy;
+  form.append(label, save, el("span", "place-hint", "Right-click the spot in Google Maps to copy them."));
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const parsed = parseCoordinates(detail.pinDraft);
+    if (parsed.error) {
+      detail.message = { text: parsed.error, kind: "error" };
+      renderDetails();
+      return;
+    }
+    const latLng = L.latLng(parsed.spot.lat, parsed.spot.long);
+    state.markers.get(listing.id)?.setLatLng(latLng);
+    dropPin(listing.id, latLng);
+  });
+  return form;
+}
+
 function startMoving() {
   const detail = state.detail;
   const marker = state.markers.get(detail.id);
   if (!marker) return;
-  Object.assign(detail, { moving: true, message: null });
+  const listing = listingById(detail.id);
+  Object.assign(detail, { moving: true, message: null, pinDraft: coordinatesText(listing?.spot) });
   marker.dragging.enable();
   renderDetails();
 }
@@ -1199,7 +1391,7 @@ function stopMoving() {
   renderDetails();
 }
 
-// A drop saves the new Lat and Long at once. A refused or failed drop puts the pin back on the sheet spot.
+// A drop, or typed coordinates, saves the new Lat and Long at once. A refused or failed drop puts the pin back on the sheet spot.
 // The app does not try again.
 async function dropPin(id, latLng) {
   const detail = state.detail;
@@ -1208,7 +1400,7 @@ async function dropPin(id, latLng) {
   if (detail.busy) {
     putPinBack(id);
     state.markers.get(id)?.dragging?.enable();
-    detail.message = { text: "Wait for the save to finish, then drag the pin again.", kind: "error" };
+    detail.message = { text: "Wait for the save to finish, then move the pin again.", kind: "error" };
     renderDetails();
     return;
   }
@@ -1237,6 +1429,7 @@ function closeDetails() {
   closePick();
   state.pickedId = null;
   state.detail = null;
+  detailsBackEl.hidden = true;
   detailsEl.hidden = true;
   detailsEl.replaceChildren();
   listViewEl.hidden = false;
@@ -1260,10 +1453,23 @@ function placeIcon(place) {
 }
 
 // Places always show on the map, whatever the filters are.
+const placeMarkers = new Map();
+
 function renderPlaces() {
   placeLayer.clearLayers();
+  placeMarkers.clear();
   for (const place of state.places) {
-    if (place.spot) L.marker(place.spot, { icon: placeIcon(place), keyboard: false, zIndexOffset: 500 }).addTo(placeLayer);
+    if (placeEdit.place === place && placeEdit.dragging) {
+      const marker = L.marker(dragStart(place), { icon: placeIcon(place), keyboard: false, zIndexOffset: 1000, draggable: true });
+      marker.on("dragend", () => {
+        const { lat, lng } = marker.getLatLng();
+        placeEdit.draft.coordinates = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        renderPlaces();
+      });
+      marker.addTo(placeLayer);
+    } else if (place.spot) {
+      placeMarkers.set(place, L.marker(place.spot, { icon: placeIcon(place), keyboard: false, zIndexOffset: 500 }).addTo(placeLayer));
+    }
   }
 
   if (!state.places.length) {
@@ -1273,6 +1479,7 @@ function renderPlaces() {
   placeListEl.replaceChildren(
     ...state.places.map((place) => {
       const item = el("li", "place");
+      hoverLinks(item, () => placeMarkers.get(place), ".place-pin", () => 500);
       // A place with a map spot is a button that shows its star on the map.
       const label = placeLabel(place.spot ? "button" : "span", "place-open", place);
       if (place.spot) {
@@ -1281,12 +1488,168 @@ function renderPlaces() {
       }
       const name = el("h3", "place-name");
       name.append(label);
+      if (placeEdit.place === place) {
+        item.append(name, placeEditForm(place));
+        return item;
+      }
       const facts = [place.precision ? `Pin: ${place.precision}` : "", place.addedBy ? `Added by ${place.addedBy}` : ""];
       item.append(name, el("p", "place-address", place.address || NOT_GIVEN), el("p", "place-facts", facts.filter(Boolean).join(" · ")));
       if (!place.spot) item.append(el("p", "card-note", "No map spot"));
+      const edit = el("button", "place-edit-open", "Edit");
+      edit.type = "button";
+      edit.setAttribute("aria-label", `Edit ${place.name || "this place"}`);
+      edit.addEventListener("click", () => {
+        openPlaceEdit(place);
+        renderPlaces();
+        placeListEl.querySelector(".place-edit input")?.focus();
+      });
+      item.append(edit);
       return item;
     }),
   );
+}
+
+// The place whose edit form is open, or null. Only one form is open at a time.
+const placeEdit = { place: null, draft: null, note: "", isError: false, busy: false, dragging: false };
+
+// The draft keeps what the person typed, so a redraw of the list does not lose it.
+function openPlaceEdit(place) {
+  const draft = { name: place.name, address: place.address, coordinates: coordinatesText(place.spot) };
+  Object.assign(placeEdit, { place, draft, note: "", isError: false, busy: false, dragging: false });
+}
+
+function closePlaceEdit() {
+  Object.assign(placeEdit, { place: null, draft: null, busy: false, dragging: false });
+}
+
+// Where the star sits while the person drags it: the spot in the Coordinates box, the saved spot, or the map centre.
+function dragStart(place) {
+  const typed = parseCoordinates(placeEdit.draft.coordinates).spot;
+  if (typed) return [typed.lat, typed.long];
+  if (place.spot) return place.spot;
+  const centre = map.getCenter();
+  return [centre.lat, centre.lng];
+}
+
+function placeEditForm(place) {
+  const form = el("form", "place-edit");
+  const field = (label, key, max) => {
+    const wrap = el("label", "", label);
+    const input = el("input");
+    Object.assign(input, { name: key, value: placeEdit.draft[key], required: true, maxLength: max, autocomplete: "off" });
+    input.addEventListener("input", () => {
+      placeEdit.draft[key] = input.value;
+    });
+    wrap.append(input);
+    return wrap;
+  };
+  const save = el("button", "", placeEdit.busy ? "Saving…" : "Save");
+  save.type = "submit";
+  save.disabled = placeEdit.busy;
+  const cancel = el("button", "place-edit-cancel", "Cancel");
+  cancel.type = "button";
+  cancel.disabled = placeEdit.busy;
+  cancel.addEventListener("click", () => {
+    closePlaceEdit();
+    renderPlaces();
+  });
+  const actions = el("div", "place-edit-actions");
+  actions.append(save, cancel);
+  const note = el("p", `place-note${placeEdit.isError ? " place-note--error" : ""}`, placeEdit.note);
+  note.setAttribute("aria-live", "polite");
+  const coordinates = field("Coordinates", "coordinates", 60);
+  const coordinatesInput = coordinates.querySelector("input");
+  coordinatesInput.required = false;
+  coordinatesInput.inputMode = "decimal";
+  coordinatesInput.placeholder = "23.0300, 72.5100";
+  coordinates.append(el("span", "place-hint", "Paste new ones from Google Maps, or clear the box to find the spot from the address."));
+  const drag = el("button", "place-edit-cancel", placeEdit.dragging ? "Stop dragging" : "Drag the pin");
+  drag.type = "button";
+  drag.disabled = placeEdit.busy;
+  drag.addEventListener("click", () => {
+    placeEdit.dragging = !placeEdit.dragging;
+    renderPlaces();
+    if (placeEdit.dragging) map.setView(dragStart(place), Math.max(map.getZoom(), 15));
+  });
+  const parts = [field("Name", "name", 60), field("Address", "address", 200), coordinates, drag];
+  if (placeEdit.dragging) parts.push(el("p", "place-hint", "Drag the ★ on the map to the right spot. The Coordinates box follows it. Then click Save."));
+  form.append(...parts, actions, note);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const { name, address, coordinates: typed } = placeEdit.draft;
+    savePlaceEdit(place, name, address, typed);
+  });
+  return form;
+}
+
+function setEditNote(note, isError) {
+  Object.assign(placeEdit, { note, isError: Boolean(isError) });
+  renderPlaces();
+}
+
+// A changed address gets a new map spot from the geocoder. Then the Apps Script writes the row,
+// but only if the row still holds what this page showed.
+async function savePlaceEdit(place, name, address, coordinates) {
+  if (!name.trim() || !address.trim()) {
+    setEditNote("Give the place a name and an address.", true);
+    return;
+  }
+  const plan = spotPlan(coordinates, place, address);
+  if (plan.error) {
+    setEditNote(plan.error, true);
+    return;
+  }
+  placeEdit.busy = true;
+  let body;
+  try {
+    const spot = plan.spot ?? (await spotFromAddress(address, setEditNote));
+    setEditNote("Saving to the sheet…");
+    body = editPlaceBody(place, name, address, spot);
+    let reply;
+    try {
+      reply = await callScript(body);
+    } catch (err) {
+      // The call may have written. Read the sheet again and show what it holds.
+      const sheet = await loadSheet();
+      state.places = placesFromRows(sheet.places);
+      const saved = editedPlaceIn(state.places, body.place);
+      if (saved) return placeSaved(saved);
+      throw new Error(`${err.message} The change was not saved. The list shows the sheet now.`);
+    }
+    if (!reply.ok && reply.error === "place_gone") {
+      state.places = placesFromRows(reply.places);
+      // A retry of an edit that went in finds the new values, not the old ones.
+      const saved = editedPlaceIn(state.places, body.place);
+      if (saved) return placeSaved(saved);
+      closePlaceEdit();
+      renderPlaces();
+      renderList();
+      setNote("Someone changed or removed this place first. Your change was not saved. The list shows the sheet now.", true);
+      return;
+    }
+    if (!reply.ok) {
+      throw new Error(reply.error === "busy" ? "The sheet is busy. Click Save again in a moment." : `The Apps Script said: ${reply.error}`);
+    }
+    const [saved] = placesFromRows([reply.place]);
+    state.places = state.places.map((p) => (p === place ? saved : p));
+    placeSaved(saved);
+  } catch (err) {
+    placeEdit.busy = false;
+    if (state.places.includes(placeEdit.place)) setEditNote(err.message, true);
+    else {
+      closePlaceEdit();
+      renderPlaces();
+      setNote(err.message, true);
+    }
+  }
+}
+
+function placeSaved(saved) {
+  closePlaceEdit();
+  renderPlaces();
+  renderList();
+  setNote(`Saved ${saved.name}. Pin: ${saved.precision}.`);
+  if (saved.spot) map.setView(saved.spot, Math.max(map.getZoom(), 13));
 }
 
 function setNote(text, isError) {
@@ -1298,7 +1661,20 @@ function samePlace(a, b) {
   return a.name.toLowerCase() === b.name.toLowerCase() && a.address.toLowerCase() === b.address.toLowerCase();
 }
 
-// Find the map spot on the local web server, then write the place to the Places tab.
+// The geocoder's spot for a place address. say shows progress in the form the person is using.
+async function spotFromAddress(address, say) {
+  if ((await appConfig()).geocoding === false) {
+    throw new Error("The geocoder is off in config.json. Paste the coordinates from Google Maps instead.");
+  }
+  if (!state.city) throw new Error("The Settings tab has no City. Add a City row with the city name, or paste the coordinates.");
+  say("Finding the map spot…");
+  // A place has no society or locality. Its address is the most exact text, so it goes first.
+  const spot = await geocode({ society: address.trim(), city: state.city });
+  if (!spot) throw new Error(`Could not find this address in ${state.city}. Try a shorter address, or paste the coordinates from Google Maps.`);
+  return spot;
+}
+
+// Use the typed coordinates, or find the map spot on the local web server. Then write the place to the Places tab.
 async function addPlace(event) {
   event.preventDefault();
   const name = placeFormEl.elements.name.value.trim();
@@ -1307,18 +1683,15 @@ async function addPlace(event) {
     setNote("Give the place a name and an address.", true);
     return;
   }
-  if (!state.city) {
-    setNote("The Settings tab has no City. Add a City row with the city name, then reload.", true);
+  const plan = spotPlan(placeFormEl.elements.coordinates.value);
+  if (plan.error) {
+    setNote(plan.error, true);
     return;
   }
   const button = placeFormEl.querySelector("button");
   button.disabled = true;
   try {
-    setNote("Finding the map spot…");
-    // A place has no society or locality. Its address is the most exact text, so it goes first.
-    const spot = await geocode({ society: address, city: state.city });
-    if (!spot) throw new Error(`Could not find this address in ${state.city}. Try a shorter address, like the area name.`);
-
+    const spot = plan.spot ?? (await spotFromAddress(address, setNote));
     setNote("Saving to the sheet…");
     const place = { name, address, lat: spot.lat, long: spot.long, precision: spot.precision };
     const reply = await callScript({ action: "addPlace", place, addedBy: state.name });
@@ -1881,6 +2254,7 @@ async function saveListing(add) {
 
 function setUpAddSteps() {
   addOpenEl.addEventListener("click", openAddSteps);
+  detailsBackEl.addEventListener("click", closeDetails);
   document.getElementById("add-close").addEventListener("click", closeAddSteps);
   addOpenEl.hidden = false;
 }
@@ -1910,12 +2284,11 @@ function setUpSideTabs() {
   });
 }
 
-// With the geocoder off in config.json, the app cannot find a spot, so the form says so up front.
+// With the geocoder off in config.json, only typed coordinates give a spot, so the form says so up front.
 async function setUpPlaceForm() {
   placeFormEl.addEventListener("submit", addPlace);
   if ((await appConfig()).geocoding === false) {
-    placeFormEl.querySelector("button").disabled = true;
-    setNote("The geocoder is off in config.json, so a new place cannot get a map spot.", true);
+    setNote("The geocoder is off in config.json. Paste the coordinates from Google Maps to add a place.", true);
   }
 }
 

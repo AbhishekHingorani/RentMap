@@ -58,3 +58,24 @@ export function photoLinks(listing) {
 export function itemsOf(listing, column) {
   return splitItems(listing.row[column]);
 }
+
+// The number of balconies, read from Other details, since the sheet has no Balcony column. Claude writes it
+// as "Balcony: 1", "Balconies: 2", "2 balconies" or "0 balcony". Returns null when the text does not say.
+export function balconiesOf(listing) {
+  const text = toText(listing.row["Other details"]);
+  const match = text.match(/balcon(?:y|ies)\s*:\s*(\d+)/i) ?? text.match(/(\d+)\s*balcon/i);
+  if (match) return Number(match[1]);
+  return /\bno balcon/i.test(text) ? 0 : null;
+}
+
+export function balconyText(count) {
+  if (count === null) return `Balcony ${NOT_GIVEN}`;
+  if (count === 0) return "No balcony";
+  return count === 1 ? "1 balcony" : `${count} balconies`;
+}
+
+// "2 of 10" reads as "Floor 2 of 10".
+export function floorText(listing) {
+  const floor = toText(listing.row["Floor / total floors"]);
+  return floor ? `Floor ${floor}` : `Floor ${NOT_GIVEN}`;
+}

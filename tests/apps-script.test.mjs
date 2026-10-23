@@ -312,6 +312,67 @@ test("addPlace refuses a place with no name, no map spot or an unknown Pin preci
   assert.equal(places.cells.length, 1);
 });
 
+const SEEN = { name: "Office", address: "Embassy Tech Village, Outer Ring Road", lat: 12.93, long: 77.69 };
+const officeRow = () => ["Office", "Embassy Tech Village, Outer Ring Road", 12.93, 77.69, "building", "Asha"];
+
+test("editPlace writes the new name, address and spot inside the lock and keeps Added by", () => {
+  const places = fakeSheet("Places", [PLACES_COLUMNS, ["Gym", "MG Road", 12.97, 77.6, "locality", "Ravi"], officeRow()]);
+  const { context, log } = runScript([places]);
+  const place = { name: "New office", address: "Bagmane Tech Park", lat: 12.98, long: 77.66, precision: "society" };
+
+  const reply = post(context, { action: "editPlace", old: SEEN, place });
+
+  assert.equal(reply.ok, true);
+  assert.deepEqual(places.cells[2], ["New office", "Bagmane Tech Park", 12.98, 77.66, "society", "Asha"]);
+  assert.deepEqual(places.cells[1], ["Gym", "MG Road", 12.97, 77.6, "locality", "Ravi"]);
+  assert.equal(reply.place["Added by"], "Asha");
+  assert.deepEqual(log, ["wait 20000", "flush", "release"]);
+});
+
+test("editPlace writes by the row 1 headers, so a moved column gets the right value", () => {
+  const places = fakeSheet("Places", [
+    ["Added by", "Name", "Lat", "Long", "Address", "Pin precision"],
+    ["Asha", "Office", 12.93, 77.69, "Embassy Tech Village, Outer Ring Road", "building"],
+  ]);
+  const { context } = runScript([places]);
+  post(context, { action: "editPlace", old: SEEN, place: { ...OFFICE, name: "HQ" } });
+  assert.deepEqual(places.cells[1], ["Asha", "HQ", 12.93, 77.69, "Embassy Tech Village, Outer Ring Road", "building"]);
+});
+
+test("editPlace writes nothing when the row no longer holds what the person saw", () => {
+  const moved = officeRow();
+  moved[2] = 12.95;
+  const places = fakeSheet("Places", [PLACES_COLUMNS, moved]);
+  const { context } = runScript([places]);
+
+  const reply = post(context, { action: "editPlace", old: SEEN, place: { ...OFFICE, name: "HQ" } });
+
+  assert.equal(reply.ok, false);
+  assert.equal(reply.error, "place_gone");
+  assert.equal(reply.places[0].Lat, 12.95);
+  assert.equal(places.cells[1][0], "Office");
+});
+
+test("editPlace refuses a name and address another place already has", () => {
+  const places = fakeSheet("Places", [PLACES_COLUMNS, officeRow(), ["Gym", "MG Road", 12.97, 77.6, "locality", "Ravi"]]);
+  const { context } = runScript([places]);
+  const reply = post(context, { action: "editPlace", old: SEEN, place: { ...OFFICE, name: " gym ", address: "mg road" } });
+  assert.deepEqual(reply, { ok: false, error: "Another place has this name and address." });
+  assert.equal(places.cells[1][0], "Office");
+});
+
+test("editPlace refuses a bad place before the lock, and returns busy when the lock does not come", () => {
+  const places = fakeSheet("Places", [PLACES_COLUMNS, officeRow()]);
+  const { context, log } = runScript([places], { busy: true });
+  assert.deepEqual(post(context, { action: "editPlace", old: SEEN, place: { ...OFFICE, lat: null } }), {
+    ok: false,
+    error: "A place needs a map spot.",
+  });
+  assert.deepEqual(log, []);
+  assert.deepEqual(post(context, { action: "editPlace", old: SEEN, place: OFFICE }), { ok: false, error: "busy" });
+  assert.deepEqual(places.cells[1], officeRow());
+});
+
 // A new listing row as the page sends it. The page never sends the two worked-out columns.
 function newRow(over = {}) {
   return {

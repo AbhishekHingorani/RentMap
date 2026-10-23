@@ -134,6 +134,8 @@ function doPost(e) {
       reply = load();
     } else if (body.action === "addPlace") {
       reply = addPlace(body.place, body.addedBy);
+    } else if (body.action === "editPlace") {
+      reply = editPlace(body.old, body.place);
     } else if (body.action === "addListing") {
       reply = addListing(body.listing);
     } else if (body.action === "getListing") {
@@ -192,25 +194,12 @@ function withLock(write) {
 // place: { name, address, lat, long, precision }. The local web server found lat, long and precision.
 // A place with the same name and address is not added twice, so a retried call is safe.
 function addPlace(place, addedBy) {
-  place = place || {};
-  var name = String(place.name || "").trim();
-  var address = String(place.address || "").trim();
-  var lat = place.lat;
-  var long = place.long;
-  if (!name || !address) return { ok: false, error: "A place needs a name and an address." };
-  if (typeof lat !== "number" || typeof long !== "number" || !isFinite(lat) || !isFinite(long)) {
-    return { ok: false, error: "A place needs a map spot." };
-  }
-  if (PIN_PRECISIONS.indexOf(place.precision) === -1) return { ok: false, error: "Unknown Pin precision: " + place.precision };
-
-  var values = {
-    Name: name,
-    Address: address,
-    Lat: lat,
-    Long: long,
-    "Pin precision": place.precision,
-    "Added by": String(addedBy || "").trim(),
-  };
+  var problem = placeProblem(place);
+  if (problem) return { ok: false, error: problem };
+  var values = placeCells(place);
+  var name = values.Name;
+  var address = values.Address;
+  values["Added by"] = String(addedBy || "").trim();
   return withLock(function () {
     var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     var saved = readTab(spreadsheet, "Places");
@@ -225,6 +214,76 @@ function addPlace(place, addedBy) {
     });
     sheet.getRange(sheet.getLastRow() + 1, 1, 1, row.length).setValues([row]);
     return { ok: true, place: values };
+  });
+}
+
+// Why a place from the page cannot be written, or "" when it can.
+function placeProblem(place) {
+  place = place || {};
+  if (!String(place.name || "").trim() || !String(place.address || "").trim()) return "A place needs a name and an address.";
+  var lat = place.lat;
+  var long = place.long;
+  if (typeof lat !== "number" || typeof long !== "number" || !isFinite(lat) || !isFinite(long)) return "A place needs a map spot.";
+  if (PIN_PRECISIONS.indexOf(place.precision) === -1) return "Unknown Pin precision: " + place.precision;
+  return "";
+}
+
+// The Places cells the page may write. Added by is not here, because an edit keeps it.
+function placeCells(place) {
+  return {
+    Name: String(place.name).trim(),
+    Address: String(place.address).trim(),
+    Lat: place.lat,
+    Long: place.long,
+    "Pin precision": place.precision,
+  };
+}
+
+// Changes one place. Places have no id, so old holds the name, address, lat and long the person saw.
+// Inside the lock, the row must still hold those 4 values. If no row does, someone changed or removed
+// the place first: nothing is written and the reply holds the Places tab as it is now.
+function editPlace(old, place) {
+  old = old || {};
+  var problem = placeProblem(place);
+  if (problem) return { ok: false, error: problem };
+  var values = placeCells(place);
+  return withLock(function () {
+    var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = spreadsheet.getSheetByName("Places");
+    if (!sheet) throw new Error("missing tab: Places. Run setup in the Apps Script editor.");
+    var cells = sheet.getDataRange().getValues();
+    var headers = cells[0] || [];
+    var at = function (r, header) {
+      var c = headers.indexOf(header);
+      return c === -1 ? "" : cells[r][c];
+    };
+    var rowIndex = -1;
+    for (var r = 1; r < cells.length; r++) {
+      var same =
+        sameText(at(r, "Name"), old.name) &&
+        sameText(at(r, "Address"), old.address) &&
+        sameCell(old.lat, at(r, "Lat")) &&
+        sameCell(old.long, at(r, "Long"));
+      if (same) {
+        rowIndex = r;
+        break;
+      }
+    }
+    if (rowIndex === -1) return { ok: false, error: "place_gone", places: readTab(spreadsheet, "Places") };
+    for (var j = 1; j < cells.length; j++) {
+      if (j !== rowIndex && sameText(at(j, "Name"), values.Name) && sameText(at(j, "Address"), values.Address)) {
+        return { ok: false, error: "Another place has this name and address." };
+      }
+    }
+    var row = headers.map(function (header, c) {
+      return Object.prototype.hasOwnProperty.call(values, header) ? values[header] : cells[rowIndex][c];
+    });
+    sheet.getRange(rowIndex + 1, 1, 1, row.length).setValues([row]);
+    var saved = {};
+    headers.forEach(function (header, c) {
+      if (header) saved[header] = row[c];
+    });
+    return { ok: true, place: saved };
   });
 }
 

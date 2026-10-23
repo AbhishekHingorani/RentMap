@@ -33,7 +33,13 @@ The Places tab in the left column lists places like an office. Its form takes a 
 
 The geocoder looks inside the city in the City row of the Settings tab. `setup` writes Bangalore there. Change the cell for another city.
 
-To turn the geocoder off, set `"geocoding": false` in `config.json` and start the app again. The app then cannot find a map spot for a new place.
+To put the pin on an exact spot, fill the optional Coordinates box, like `23.0300, 72.5100`. Right-click the spot in Google Maps to copy them. The app then skips the geocoder and saves Pin precision as building.
+
+Click "Edit" under a place to change its name, address or coordinates. To fix a wrong pin, click "Drag the pin" in that form, drag the ★ on the map, then click Save. A new address gets a new map spot. If someone changed the same place first, nothing is saved, and the list shows the sheet as it is now.
+
+After you paste a new `Code.gs`, edit the deployment and pick a new version, or the `editPlace` call fails with "unknown action".
+
+To turn the geocoder off, set `"geocoding": false` in `config.json` and start the app again. A new place then needs coordinates.
 
 ## Add a listing by link
 
@@ -55,6 +61,16 @@ With Claude Code on your computer, paste the prompt into the "Ask my local Claud
 
 A link that is already on the map stops the add at step 1, with an "Open it" button. For 99acres, two links with the same `spid-` part count as the same listing. At Save, a saved listing with the same society and Configuration gets a warning. Click "Save anyway" to add it all the same.
 
+## Find a listing on the map
+
+Point at a listing in the list, or a place on the Places tab, and its pin on the map grows and comes to the front. The map does not move.
+
+## Key facts at the top
+
+The top of a listing's details shows furnishing, floor, balconies and the distance to each place. The sheet has no Balcony column, so the app reads the count from Other details, like "Balcony: 1" or "2 balconies". One or more balconies is green, none is red.
+
+Each distance is green for the listing nearest to that place and red for the farthest, with shades between. The colours compare all listings on the sheet, so they change as listings are added. The cards in the list use the same colours.
+
 ## Our take
 
 Open a listing and pick the Our take tab. A click on a Status or a rating saves it at once. A click on the picked rating clears it. Pros and cons have a box to add one and a "×" to remove one.
@@ -69,11 +85,13 @@ Open a listing and pick the "All 40 fields" tab. Click "Edit" to change a value 
 
 If someone changed the same cell first, nothing is saved. That cell shows "In the sheet now: <value>". Click "Use sheet value" or "Keep mine", then Save again.
 
-Click "Move pin" and drag the pin on the map to the right spot. The app saves it when you drop it.
+Click "Move pin" and drag the pin on the map to the right spot. The app saves it when you drop it. Or type the spot in the Coordinates box, like `23.0300, 72.5100`, and click "Save coordinates".
 
 ## Photos
 
 Open a listing. On the Overview tab, click "Upload photos" and pick one photo or more. The page shrinks each photo to 1600 px on the long side and sends it to the Apps Script. The script saves it in the shared Drive folder. The "×" on a photo removes it from the listing. The file stays in Drive.
+
+Click a photo to see it large. Use the arrows or the ← and → keys to move through the listing's photos, or click a small photo in the strip at the bottom. Press Esc to close.
 
 After you paste the new `Code.gs`, run `setup` again. It makes the "Rental map photos" folder in your Drive and writes its link in the Photos folder row of the Settings tab. Allow the Drive access Google asks for. Then edit the deployment and pick a new version, or the `uploadPhoto` call fails with "unknown action". To use a folder you already have, paste its link in that row.
 

@@ -85,3 +85,23 @@ test("Pros and Cons split into one item each", () => {
   assert.deepEqual(itemsOf(listing, "Pros"), ["Big balcony", "Quiet"]);
   assert.deepEqual(itemsOf(listing, "Cons"), []);
 });
+
+test("balconies are read from Other details in each form Claude writes", async () => {
+  const { balconiesOf, balconyText } = await import("../public/lib/details.mjs");
+  const of = (text) => balconiesOf({ row: { "Other details": text } });
+  assert.equal(of("Balcony: 1; Facing: East"), 1);
+  assert.equal(of("Facing: East; Balconies: 3; Building: 5 floors"), 3);
+  assert.equal(of("Flat; 2 balconies; facing East"), 2);
+  assert.equal(of("0 balcony"), 0);
+  assert.equal(of("Balconies: 0"), 0);
+  assert.equal(of("No balcony, top floor"), 0);
+  assert.equal(of("Modular kitchen; 4-floor building"), null);
+  assert.equal(of(""), null);
+  assert.deepEqual([0, 1, 2, null].map(balconyText), ["No balcony", "1 balcony", "2 balconies", "Balcony not given"]);
+});
+
+test("floor reads as Floor <value>, or not given", async () => {
+  const { floorText } = await import("../public/lib/details.mjs");
+  assert.equal(floorText({ row: { "Floor / total floors": "3 of 7" } }), "Floor 3 of 7");
+  assert.equal(floorText({ row: { "Floor / total floors": "" } }), "Floor not given");
+});
