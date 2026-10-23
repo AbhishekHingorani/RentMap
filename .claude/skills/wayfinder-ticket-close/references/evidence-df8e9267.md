@@ -1,0 +1,2 @@
+[Check that a Google Apps Script can be the backend](10-apps-script-backend.md) found that the script lock stops broken writes, but a newer edit can still overwrite an older one.
+- [Check that a Google Apps Script can be the backend](issues/10-apps-script-backend.md): yes; text/plain POST, script lock on writes, one base64 photo per call, browser-made listing ids. CORS needs a live test before the build.

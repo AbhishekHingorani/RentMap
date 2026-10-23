@@ -1,0 +1,3 @@
+undefined "Can local claude read a listing link" { value: 'research', bold: false } {"raw":"resolved","key":"resolved","note":"","bold":false} undefined
+undefined "Add the sample Excel sheet" { value: 'task', bold: false } {"raw":"resolved","key":"resolved","note":"","bold":false} undefined
+Yes. I ran the MEANSoftwareFactory ticket reader on the folder. It lists all 13 tickets. It shows this one as resolved.

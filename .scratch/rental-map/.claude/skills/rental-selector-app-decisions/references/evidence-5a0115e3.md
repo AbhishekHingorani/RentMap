@@ -1,0 +1,1 @@
+Claude web reply: "Good news: Claude web read the 99acres link by itself. It even found all 13 photo links." and "The reply was normal text. The real prompt must ask for a fixed format (JSON), so the app can read it." Sheet: "A1=Monthly budget limit (₹) | B1=30000.0" "A2=Society / building name | B2=Location / area | C2=Apartment type | D2=Status"

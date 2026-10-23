@@ -1,8 +1,10 @@
 # Our take tab, with the clash check
 
-Type: task
-Status: open
-Blocked by: 03, 05
+**Type:** task
+**Status:** completed
+
+**Completed at:** 2026-10-23T13:26:14Z
+**Blocked by:** 03, 05
 
 ## What to build
 

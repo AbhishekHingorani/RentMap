@@ -1,0 +1,1 @@
+{"type":"tool_result","content":"200\nNo appsScriptUrl in config.json. Copy config.example.json to config.json and set it.\nRental map is on http://localhost:8790\n{\"appsScriptUrl\":null,\"geocoding\":true}"}  and: "# config.json is not in git, because the Apps Script /exec URL is a secret." / "const CONFIG_FILE = path.join(__dirname, \"config.json\");"

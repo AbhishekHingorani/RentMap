@@ -1,8 +1,10 @@
 # Add by link, Claude web path
 
-Type: task
-Status: open
-Blocked by: 02, 04
+**Type:** task
+**Status:** completed
+
+**Completed at:** 2026-10-23T12:33:13Z
+**Blocked by:** 02, 04
 
 ## What to build
 

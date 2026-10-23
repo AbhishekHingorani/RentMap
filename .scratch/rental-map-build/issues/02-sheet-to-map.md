@@ -1,7 +1,9 @@
 # First thin path: sheet to map
 
 **Type:** task
-**Status:** in-progress
+**Status:** completed
+
+**Completed at:** 2026-10-23T12:03:55Z
 **Blocked by:** 01
 
 ## What to build

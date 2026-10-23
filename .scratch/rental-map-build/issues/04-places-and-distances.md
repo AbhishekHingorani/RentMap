@@ -1,8 +1,10 @@
 # Places, geocoding and distances
 
-Type: task
-Status: open
-Blocked by: 02
+**Type:** task
+**Status:** completed
+
+**Completed at:** 2026-10-23T12:23:36Z
+**Blocked by:** 02
 
 ## What to build
 

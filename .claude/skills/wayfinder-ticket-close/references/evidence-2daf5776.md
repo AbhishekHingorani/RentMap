@@ -1,0 +1,2 @@
+Read the Bash call: cat 13-map-filters.md; echo ----; cat 03-excel-columns.md; echo ----; cat 06-map-ui-prototype.md; echo; cat ../../../GLOSSARY.md
+Each session consults the `grilling` and `domain-modeling` skills. Talk to the user in plain, short words.

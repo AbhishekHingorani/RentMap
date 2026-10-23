@@ -1,8 +1,10 @@
 # Same listing added twice
 
-Type: task
-Status: open
-Blocked by: 05
+**Type:** task
+**Status:** completed
+
+**Completed at:** 2026-10-23T12:47:15Z
+**Blocked by:** 05
 
 ## What to build
 

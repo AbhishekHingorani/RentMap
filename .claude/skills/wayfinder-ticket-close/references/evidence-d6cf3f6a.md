@@ -1,0 +1,1 @@
+{"type":"user","message":{"role":"user","content":"@/Users/abhishekhingorani/Abhishek/MEANSoftwareFactory/ is not able to detect the contents of .scratch folder"}}

@@ -1,0 +1,1 @@
+Note: `/Users/abhishekhingorani/Abhishek/rentalSelector/.wayfinder/map.md` does not exist. The real map is `/Users/abhishekhingorani/Abhishek/rentalSelector/.scratch/rental-map/map.md`. I used that one. I marked the ticket as claimed.

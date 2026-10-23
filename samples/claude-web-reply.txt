@@ -1,0 +1,32 @@
+Source: claude.ai web, pasted by the user on 2026-10-23.
+Link: https://www.99acres.com/2-bhk-bedroom-apartment-flat-for-rent-in-ahad-excellencia-chikkanayakanahalli-bangalore-south-1160-sqft-spid-M93900012
+Prompt: Read this rental listing and list its rent, BHK, carpet area, furnishing, floor, locality, and photo links: <link>
+
+Here are the details for the 2 BHK at Ahad Excellencia:
+
+Rent: ₹38,999/month, plus a ₹1.17 lakh deposit and brokerage (it's a dealer listing)
+BHK: 2 BHK, with 2 bathrooms and 2 balconies
+Carpet area: Not listed. The only area given is 1,160 sq ft super built-up (107.77 sq m). Ask the dealer for the carpet area, which is usually 20-30% smaller than super built-up.
+Furnishing: Semi-furnished, with a wardrobe, geyser, light, fan, modular kitchen and chimney (one of each)
+Floor: 4th of 4, so the top floor
+Locality: Ahad Excellencia, Chikkanayakanahalli, near Sarjapur Road, Bangalore South
+
+Other details from the listing: east-facing, open on two sides, recently renovated, 1 covered and 1 open parking space, full power backup, and available immediately.
+
+Photos (13 property photos, full-size):
+
+https://imagecdn.99acres.com/media1/41417/2/828342725O-1787988609938.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342709O-1787988602450.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342885O-1787988611091.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342755O-1787988606552.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342809O-1787988606433.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342895O-1787988610968.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342897O-1787988610625.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342843O-1787988614626.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342899O-1787988607756.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342753O-1787988604469.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342793O-1787988608740.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342803O-1787988606727.jpg
+https://imagecdn.99acres.com/media1/41417/2/828342891O-1787988607810.jpg
+
+The page also has a property video and 48 photos of the society itself. I left those out because they show the project as a whole, not this flat.

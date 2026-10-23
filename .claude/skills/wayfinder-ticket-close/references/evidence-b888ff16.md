@@ -1,0 +1,1 @@
+Write result: "File created successfully at: /Users/abhishekhingorani/Abhishek/rentalSelector/.scratch/rental-map-build/issues/05-add-by-link.md" with content "# Add by link, Claude web path\n\nType: task\nStatus: open\nBlocked by: 02, 04\n\n## What to build". Assistant then ran: grep -n "^Type:\|^Status:\|^Blocked by:" *.md

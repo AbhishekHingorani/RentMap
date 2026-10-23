@@ -1,8 +1,10 @@
 # Edit form and move pin
 
-Type: task
-Status: open
-Blocked by: 08
+**Type:** task
+**Status:** completed
+
+**Completed at:** 2026-10-23T13:40:05Z
+**Blocked by:** 08
 
 ## What to build
 

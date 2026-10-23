@@ -1,0 +1,1 @@
+{"action": "create", "reason": "Starting, restarting, and checking the rental map server took several tries. The server reads config.json only at start, and a missing config still starts with a warning. A project skill keeps the run and check steps in one place.", "evidence": "references/evidence-8b53f6b1.md"}

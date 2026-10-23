@@ -1,0 +1,2 @@
+{"command":"cd /Users/abhishekhingorani/Abhishek/rentalSelector/.scratch/rental-map && sed -i '' 's/^Status: claimed$/Status: resolved/' issues/15-edit-delete-listing.md && cat >> issues/15-edit-delete-listing.md <<'EOF'"}
+{"command":"cd /Users/abhishekhingorani/Abhishek/rentalSelector/.scratch/rental-map && grep -n \"Two people edit the same listing\" map.md && sed -i '' '/^- Two people edit the same listing at the same time/d' map.md && grep -c \"Two people edit the same listing\" map.md; sed -n 3p map.md"}
