@@ -12,6 +12,21 @@ The server serves the page on `http://localhost:8790` and opens it in Chrome. Us
 
 On first run, the page asks for your name. It keeps the name in this Chrome on this computer.
 
+## Give the map to someone without Git or Node (Mac)
+
+`setup-mac.sh` downloads its own copy of Node and the newest code into `~/RentalMap`, then starts the map. Send the person these steps and, in a private chat, the `/exec` URL.
+
+1. Press Cmd+Space, type `Terminal`, and press Return.
+2. Paste this line and press Return:
+
+   ```
+   curl -fsSL https://raw.githubusercontent.com/AbhishekHingorani/RentMap/master/setup-mac.sh | bash
+   ```
+
+3. When it asks for the link, paste the `/exec` URL and press Return.
+
+The map opens in the browser. Keep the Terminal window open while you use it. Next time, double-click "Rental Map" on the Desktop. Each start gets the newest code from GitHub. To change the link, delete `~/RentalMap/config.json` and start again.
+
 ## Set up the sheet and the Apps Script
 
 Do these steps once, from the Google account that owns the sheet.
