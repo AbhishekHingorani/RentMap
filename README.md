@@ -71,6 +71,12 @@ If someone changed the same cell first, nothing is saved. That cell shows "In th
 
 Click "Move pin" and drag the pin on the map to the right spot. The app saves it when you drop it.
 
+## Photos
+
+Open a listing. On the Overview tab, click "Upload photos" and pick one photo or more. The page shrinks each photo to 1600 px on the long side and sends it to the Apps Script. The script saves it in the shared Drive folder. The "×" on a photo removes it from the listing. The file stays in Drive.
+
+After you paste the new `Code.gs`, run `setup` again. It makes the "Rental map photos" folder in your Drive and writes its link in the Photos folder row of the Settings tab. Allow the Drive access Google asks for. Then edit the deployment and pick a new version, or the `uploadPhoto` call fails with "unknown action". To use a folder you already have, paste its link in that row.
+
 ## Test with a few rows
 
 Open `apps-script/test-rows.tsv`, copy all 3 lines, click cell A2 of the Tracker tab, and paste. Each row has Lat and Long, so each one gets a pin. Reload the page.

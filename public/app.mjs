@@ -6,6 +6,7 @@
 // A link already on the map blocks the add. The same society and Configuration only warns.
 // The Our take tab saves Status, ratings, pros and cons on each click. The Apps Script refuses a click on a stale cell.
 // The "All 40 fields" tab has the Edit form and Move pin. Both send the value the person saw, for the same clash check.
+// The Overview tab uploads photos to the shared Drive folder and adds each Drive link to the Photos cell.
 import {
   NOT_GIVEN,
   formatRating,
@@ -42,6 +43,17 @@ import {
   photoLinks,
 } from "/lib/details.mjs";
 import { cityFrom, distancesFor, placesFromRows } from "/lib/places.mjs";
+import {
+  PHOTO_QUALITY,
+  PHOTO_TYPE,
+  base64Of,
+  dataUrlOf,
+  driveFileId,
+  driveLink,
+  photoSrc,
+  shrunkSize,
+  uploadLine,
+} from "/lib/photos.mjs";
 import {
   EDIT_COLUMNS,
   LOCKED_COLUMNS,
@@ -212,17 +224,67 @@ function statusTag(status) {
   return el("span", `status status--${statusKey(status)}`, status || NOT_GIVEN);
 }
 
-function photoImg(src, holder) {
+// A Drive photo shows through the thumbnail URL. If that fails, the Apps Script sends the photo.
+// A site photo shows from its own link.
+function photoImg(link, holder) {
   const img = el("img");
-  img.src = src;
+  const fileId = driveFileId(link);
+  let triedScript = false;
+  img.src = (fileId && fallbackSrcs.get(fileId)) || photoSrc(link);
   img.alt = "";
   img.loading = "lazy";
   img.referrerPolicy = "no-referrer";
-  img.addEventListener("error", () => {
+  img.addEventListener("error", async () => {
+    if (fileId && !triedScript) {
+      triedScript = true;
+      const src = await fallbackPhoto(fileId);
+      if (src) {
+        img.src = src;
+        return;
+      }
+    }
     img.remove();
     holder.append(el("span", "photo-none", "Photo did not load"));
   });
   return img;
+}
+
+// --- Photo fallback ---
+
+// The photos the Apps Script sent, as data: URLs. The browser keeps them in this cache, so the next visit
+// does not ask the Apps Script again. Each call takes a second or more.
+const PHOTO_CACHE = "rental-map-photos";
+const fallbackSrcs = new Map();
+const fallbackCalls = new Map();
+
+function fallbackPhoto(fileId) {
+  if (!fallbackCalls.has(fileId)) fallbackCalls.set(fileId, fetchFallbackPhoto(fileId));
+  return fallbackCalls.get(fileId);
+}
+
+// Returns the data: URL, or null. A failed call is forgotten, so the next draw tries again.
+async function fetchFallbackPhoto(fileId) {
+  const key = `/photo-cache/${fileId}`;
+  // Cache Storage needs a secure page. http://localhost counts as one.
+  const cache = "caches" in window ? await caches.open(PHOTO_CACHE).catch(() => null) : null;
+  const kept = await cache?.match(key);
+  let src = kept ? await kept.text() : null;
+  if (!src) {
+    let reply = null;
+    try {
+      reply = await callScript({ action: "getPhoto", fileId });
+    } catch {
+      // The photo shows "Photo did not load", and the next draw tries again.
+    }
+    if (reply?.ok) {
+      src = dataUrlOf(reply);
+      // A full cache only means the next visit asks again.
+      await cache?.put(key, new Response(src)).catch(() => {});
+    }
+  }
+  if (src) fallbackSrcs.set(fileId, src);
+  else fallbackCalls.delete(fileId);
+  return src;
 }
 
 function card(listing) {
@@ -366,28 +428,59 @@ function section(title, ...children) {
   return part;
 }
 
-function overviewPanel(listing) {
-  const links = photoLinks(listing);
-  const photos = el("div", "photos");
-  if (links.length) {
-    for (const link of links) {
-      const frame = el("div", "photo");
-      frame.append(photoImg(link, frame));
-      photos.append(frame);
-    }
-  } else {
-    photos.append(el("p", "not-given", "No photos"));
-  }
+function overviewPanel(listing, detail) {
   let distances;
   if (!state.places.length) distances = el("p", "not-given", "No places yet. Add one on the Places tab.");
   else if (!listing.spot) distances = el("p", "not-given", "No map spot yet, so no distances.");
   else distances = distanceList(listing, "distances");
   return [
-    section("Photos", photos),
+    photoSection(listing, detail),
     section("Money", fieldList(listing, MONEY_COLUMNS)),
     section("Flat", fieldList(listing, FLAT_COLUMNS)),
     section("Distance to each place", distances),
   ];
+}
+
+// Each photo has a "×" that removes its link from the Photos cell. A file in Drive stays in Drive.
+function photoSection(listing, detail) {
+  const take = takeState(listing, detail);
+  const links = photoLinks(listing);
+  const photos = el("div", "photos");
+  links.forEach((link, index) => {
+    const frame = el("div", "photo");
+    frame.append(photoImg(link, frame));
+    if (take.canSave) {
+      const remove = takeButton("×", `photo-remove-${index}`, take, () =>
+        sendEdit({ action: "editList", id: listing.row["Listing id"], column: "Photos", remove: link }),
+      );
+      remove.className = "take-remove photo-remove";
+      remove.setAttribute("aria-label", `Remove photo ${index + 1}. A file in Drive stays in Drive.`);
+      remove.title = "Remove this photo. A file in Drive stays in Drive.";
+      frame.append(remove);
+    }
+    photos.append(frame);
+  });
+  if (!links.length) photos.append(el("p", "not-given", "No photos"));
+  if (!take.canSave) return section("Photos", photos);
+  return section("Photos", photos, photoUpload(take), messageLine(detail));
+}
+
+function photoUpload(take) {
+  const wrap = el("div", "photo-upload");
+  const input = el("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.multiple = true;
+  input.hidden = true;
+  input.addEventListener("change", () => {
+    const files = [...input.files];
+    input.value = "";
+    if (files.length) uploadPhotos(files);
+  });
+  const pick = takeButton("Upload photos", "photo-upload", take, () => input.click());
+  pick.className = "add-secondary";
+  wrap.append(pick, input, el("span", "photo-hint", "They go into the shared Drive folder."));
+  return wrap;
 }
 
 // A button that saves on one click. canSave is false for a row with no Listing id.
@@ -611,7 +704,9 @@ function editFormPanel(listing, detail, take) {
   const table = fieldsTable(listing, (field) => {
     if (!EDIT_COLUMNS.includes(field.column)) {
       const cell = plainCell(field);
-      const why = LOCKED_COLUMNS.includes(field.column) ? "Locked" : "Change it on the Our take tab";
+      let why = "Change it on the Our take tab";
+      if (LOCKED_COLUMNS.includes(field.column)) why = "Locked";
+      else if (field.column === "Photos") why = "Change it on the Overview tab";
       cell.append(el("span", "edit-locked", why));
       return cell;
     }
@@ -911,11 +1006,11 @@ function saveCell(column, value) {
 
 // Sends one save. A refused save shows the sheet values and a message. The app does not try again.
 // done runs after a save that worked. Returns the reply, or null when the call failed or the row is gone.
-async function sendEdit(body, done = () => {}) {
-  const detail = state.detail;
+// detail is the details view that started the save. It may be closed by the time the save goes out.
+async function sendEdit(body, done = () => {}, detail = state.detail) {
   state.saves++;
   Object.assign(detail, { busy: "Saving…", message: null });
-  renderDetails();
+  if (state.detail === detail) renderDetails();
   let reply;
   let failed = "";
   try {
@@ -944,6 +1039,75 @@ async function sendEdit(body, done = () => {}) {
   if (reply.listing) putListing(reply.listing);
   if (state.detail === detail) renderDetails();
   return reply;
+}
+
+// --- Photo upload ---
+
+// Shrinks one photo on a canvas to about 1600 px on the long side, as a JPEG at quality 0.8.
+// Returns the base64 part of the JPEG.
+async function shrinkPhoto(file) {
+  let bitmap;
+  try {
+    // Chrome turns a phone photo upright from its EXIF data here.
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error("Chrome cannot read this file as a photo. Save it as a JPEG and try again.");
+  }
+  const { width, height } = shrunkSize(bitmap.width, bitmap.height);
+  const canvas = el("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  // A JPEG has no see-through parts, so a PNG gets a white ground, not a black one.
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  const data = base64Of(canvas.toDataURL(PHOTO_TYPE, PHOTO_QUALITY));
+  if (!data) throw new Error("Chrome could not make a JPEG of this photo.");
+  return data;
+}
+
+// One photo per call. Each photo goes to Drive first, then its Drive link goes into the Photos cell
+// with "add one item". The first photo that fails stops the rest.
+async function uploadPhotos(files) {
+  const detail = state.detail;
+  const id = listingById(detail.id).row["Listing id"];
+  for (const [index, file] of files.entries()) {
+    Object.assign(detail, { busy: uploadLine(index, files.length), message: null });
+    if (state.detail === detail) renderDetails();
+    let problem = "";
+    let reply = null;
+    try {
+      const data = await shrinkPhoto(file);
+      try {
+        reply = await callScript({ action: "uploadPhoto", id, data });
+      } catch (err) {
+        problem = `${err.message} The photo may be in the Drive folder, but it is not on this listing.`;
+      }
+    } catch (err) {
+      problem = err.message;
+    }
+    detail.busy = false;
+    if (reply?.error === ROW_GONE) {
+      rowGone(detail.id);
+      return;
+    }
+    if (reply && !reply.ok) problem = `The Apps Script said: ${reply.error}`;
+    if (problem) {
+      const left = files.length - index - 1;
+      const rest = left ? ` The other ${left} were not uploaded.` : "";
+      detail.message = { text: `${file.name} was not uploaded. ${problem}${rest}`, kind: "error" };
+      if (state.detail === detail) renderDetails();
+      return;
+    }
+    const added = await sendEdit({ action: "editList", id, column: "Photos", add: driveLink(reply.fileId) }, () => {}, detail);
+    if (!added?.ok) return;
+  }
+  if (files.length > 1) {
+    detail.message = { text: `Saved ${files.length} photos.`, kind: "ok" };
+    if (state.detail === detail) renderDetails();
+  }
 }
 
 // --- Edit form and Move pin ---

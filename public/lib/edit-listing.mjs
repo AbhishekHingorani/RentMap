@@ -21,8 +21,8 @@ export const LOCKED_COLUMNS = [
   "Pin precision",
 ];
 
-// The Our take tab changes these. The list cells change one item at a time, so a whole-cell save cannot touch them.
-// Notes and Photos wait for the owner and for ticket 10, but they are list cells too.
+// The Our take tab changes these, and the Overview tab changes Photos. The list cells change one item at a time,
+// so a whole-cell save cannot touch them. Notes wait for the owner, but they are a list cell too.
 export const OUR_TAKE_COLUMNS = ["Status", ...RATING_COLUMNS, ...ITEM_COLUMNS, "Notes", "Photos"];
 
 // The cells the Edit form makes editable, in sheet order: the Claude-filled cells and the 3 contact cells

@@ -48,10 +48,14 @@ var TRACKER_COLUMNS = [
 var PLACES_COLUMNS = ["Name", "Address", "Lat", "Long", "Pin precision", "Added by"];
 var SETTINGS_COLUMNS = ["Setting", "Value"];
 // City is the start value from "Assumptions" in SPEC.md. The geocoder reads the city from this row.
+// setup makes the Drive folder for uploaded photos and writes its link in the Photos folder row.
 var SETTINGS_ROWS = [
   ["Budget (₹/month)", ""],
   ["City", "Bangalore"],
+  ["Photos folder", ""],
 ];
+var PHOTOS_FOLDER_SETTING = "Photos folder";
+var PHOTOS_FOLDER_NAME = "Rental map photos";
 var PIN_PRECISIONS = ["building", "society", "locality"];
 var RATING_COLUMNS = ["Safety", "Water supply", "Location", "Condition", "Natural light"];
 // The script works these out from the other cells. The page never writes them.
@@ -63,6 +67,13 @@ var LIST_COLUMNS = ["Pros", "Cons", "Notes", "Photos"];
 // editList takes these. Notes wait for the owner to decide how notes are split. See "Known gaps" in SPEC.md.
 // public/lib/our-take.mjs has the same list.
 var ITEM_COLUMNS = ["Pros", "Cons"];
+// editList takes Photos too. An added photo must be the Drive link of an upload, from "Assumptions" in SPEC.md.
+var PHOTO_COLUMN = "Photos";
+var DRIVE_LINK = /^https:\/\/drive\.google\.com\/file\/d\/[A-Za-z0-9_-]{10,}\/view$/;
+// A Drive file id. public/lib/photos.mjs checks the same pattern.
+var FILE_ID = /^[A-Za-z0-9_-]{10,}$/;
+// The page sends a JPEG of about 1600 px on the long side, which is well under 1 MB.
+var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 // The app fills these once, when it adds the listing. A save never changes them.
 var ADD_ONLY_COLUMNS = ["Listing link", "Date added", "Added by"];
 // Move pin writes these. Each must be a number in its range.
@@ -78,6 +89,19 @@ function setup() {
   makeTab(spreadsheet, "Places", [PLACES_COLUMNS]);
   makeTab(spreadsheet, "Settings", [SETTINGS_COLUMNS].concat(SETTINGS_ROWS));
   addMissingSettings(spreadsheet.getSheetByName("Settings"));
+  makePhotosFolder(spreadsheet.getSheetByName("Settings"));
+}
+
+// An empty Photos folder row gets a new Drive folder. A row that holds a link keeps it.
+function makePhotosFolder(sheet) {
+  var values = sheet.getDataRange().getValues();
+  for (var r = 1; r < values.length; r++) {
+    if (String(values[r][0]).trim() !== PHOTOS_FOLDER_SETTING) continue;
+    if (String(values[r][1]).trim()) return;
+    var folder = DriveApp.createFolder(PHOTOS_FOLDER_NAME);
+    sheet.getRange(r + 1, 2, 1, 1).setValues([[folder.getUrl()]]);
+    return;
+  }
 }
 
 // A row whose Setting cell already holds the name is kept, whatever its value.
@@ -114,6 +138,10 @@ function doPost(e) {
       reply = saveCells(body.id, body.cells);
     } else if (body.action === "editList") {
       reply = editList(body.id, body.column, body.add, body.remove);
+    } else if (body.action === "uploadPhoto") {
+      reply = uploadPhoto(body.id, body.data);
+    } else if (body.action === "getPhoto") {
+      reply = getPhoto(body.fileId);
     } else {
       reply = { ok: false, error: "unknown action: " + body.action };
     }
@@ -318,12 +346,16 @@ function cellText(value) {
 // "Add one item" or "remove one item" for a list cell. The script changes the cell as it is in the sheet now,
 // so these saves never clash. Removing an item that is already gone counts as done.
 function editList(id, column, add, remove) {
-  if (ITEM_COLUMNS.indexOf(column) === -1) return { ok: false, error: String(column) + " is not a list cell." };
+  if (ITEM_COLUMNS.indexOf(column) === -1 && column !== PHOTO_COLUMN) return { ok: false, error: String(column) + " is not a list cell." };
   var adding = typeof add === "string" && add.trim() !== "";
   var removing = typeof remove === "string" && remove.trim() !== "";
   if (adding === removing) return { ok: false, error: "Send one item to add or to remove." };
   var item = adding ? add : remove;
   if (item.indexOf(";") !== -1) return { ok: false, error: 'An item cannot hold a ";".' };
+  // A "×" may remove any photo link, like a site link. An add is always an upload.
+  if (adding && column === PHOTO_COLUMN && !DRIVE_LINK.test(item.trim())) {
+    return { ok: false, error: "A new photo must be a Drive link like https://drive.google.com/file/d/<ID>/view." };
+  }
   return withLock(function () {
     var found = findListingRow(SpreadsheetApp.getActiveSpreadsheet(), id);
     if (!found) return { ok: false, error: "row_gone" };
@@ -334,6 +366,65 @@ function editList(id, column, add, remove) {
     if (next !== cellText(cell)) found.sheet.getRange(found.rowNumber, c + 1, 1, 1).setValues([[next]]);
     return { ok: true, listing: writeWorkedOut(found.sheet, found.rowNumber, found.headers) };
   });
+}
+
+// One photo, as base64 JPEG in data, from "Photos uploaded by hand" in SPEC.md. It saves the photo to the
+// Photos folder and shares it as "anyone with the link can view". This writes no sheet cell, so it runs
+// outside the lock. The page then adds the Drive link to the Photos cell with editList.
+function uploadPhoto(id, data) {
+  if (typeof data !== "string" || !data) return { ok: false, error: "Send the photo as base64 in data." };
+  var bytes;
+  try {
+    bytes = Utilities.base64Decode(data);
+  } catch (err) {
+    return { ok: false, error: "The photo is not base64." };
+  }
+  if (bytes.length > MAX_PHOTO_BYTES) return { ok: false, error: "The photo is bigger than 5 MB." };
+  // Apps Script bytes are signed, so 0xFF reads as -1. Every JPEG starts with FF D8.
+  if (bytes.length < 2 || (bytes[0] & 0xff) !== 0xff || (bytes[1] & 0xff) !== 0xd8) {
+    return { ok: false, error: "The photo is not a JPEG." };
+  }
+  // Check the row first, so a photo for a gone listing does not go into Drive.
+  var found = findListingRow(SpreadsheetApp.getActiveSpreadsheet(), id);
+  if (!found) return { ok: false, error: "row_gone" };
+  var name = String(found.listing["Listing id"]).trim() + " " + new Date().toISOString() + ".jpg";
+  var file = photosFolder().createFile(Utilities.newBlob(bytes, "image/jpeg", name));
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return { ok: true, fileId: file.getId() };
+}
+
+// The fallback when the thumbnail URL fails: the photo as base64. Anyone with the /exec URL can call this,
+// so it returns only a file in the Photos folder, never another file of the sheet owner.
+function getPhoto(fileId) {
+  if (typeof fileId !== "string" || !FILE_ID.test(fileId)) return { ok: false, error: "Send a Drive file id." };
+  var folderId = photosFolder().getId();
+  var file;
+  try {
+    file = DriveApp.getFileById(fileId);
+  } catch (err) {
+    return { ok: false, error: "No photo with that id in the Photos folder." };
+  }
+  var parents = file.getParents();
+  var inFolder = false;
+  while (parents.hasNext()) {
+    if (parents.next().getId() === folderId) inFolder = true;
+  }
+  if (!inFolder) return { ok: false, error: "No photo with that id in the Photos folder." };
+  var blob = file.getBlob();
+  return { ok: true, mimeType: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) };
+}
+
+// The Drive folder in the Photos folder row of the Settings tab. The row holds the folder link or its id.
+function photosFolder() {
+  var settings = readTab(SpreadsheetApp.getActiveSpreadsheet(), "Settings");
+  var value = "";
+  settings.forEach(function (row) {
+    if (String(row.Setting).trim() === PHOTOS_FOLDER_SETTING) value = String(row.Value).trim();
+  });
+  var match = value.match(/\/folders\/([A-Za-z0-9_-]+)/);
+  var folderId = match ? match[1] : value;
+  if (!folderId) throw new Error("No Photos folder in the Settings tab. Run setup in the Apps Script editor.");
+  return DriveApp.getFolderById(folderId);
 }
 
 // Apps Script cannot import, so these copy addItem and removeItem in public/lib/our-take.mjs. Keep them the same.

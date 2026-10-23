@@ -82,7 +82,7 @@ Important places shared by everyone: Name, Address, Lat, Long, Pin precision, Ad
 
 ### Settings tab
 
-Two values: Budget (₹/month) and City. City starts as Bangalore. See [Assumptions](#assumptions).
+Three values: Budget (₹/month), City and Photos folder. City starts as Bangalore. See [Assumptions](#assumptions). `setup` makes the Drive folder for uploaded photos and writes its link in the Photos folder row.
 
 ### Who did what
 
@@ -280,7 +280,7 @@ Source: [Decide how to edit and delete a saved listing](.scratch/rental-map/issu
 
 - **Built (ticket 09).** The page code is `public/lib/edit-listing.mjs` and the "All 40 fields" tab in `public/app.mjs`. Both use the `saveCells` action.
   - The Edit form makes 21 cells editable: the Claude-filled cells except Photos, and Broker phone, Owner name and Owner phone. A person fills those 3 by hand, and no other part of the app can change them.
-  - Status, the 5 ratings, Pros, Cons, Notes and Photos stay on the Our take tab. The form shows them with "Change it on the Our take tab".
+  - Status, the 5 ratings, Pros, Cons and Notes stay on the Our take tab. The form shows them with "Change it on the Our take tab". Photos shows "Change it on the Overview tab".
   - Save fixes a value in the wrong format, like the review form does, and refuses one it cannot fix. A box the person did not touch is not sent, even when the sheet holds it in another format, like "3,000".
   - After a clash, a box the person did not touch shows the sheet value now.
   - A dropped pin also sets Pin precision to building, because the person put the pin on the home. The dashed circle goes away.
@@ -305,7 +305,7 @@ Example: Asha changes Rent to ₹40,000. Ravi opened the same listing 10 minutes
   - `saveCells` takes `cells: [{ column, old, new }]`. A clash replies `{ "ok": false, "error": "clash", "clashes": [<columns>], "listing": <sheet row> }`. A gone row replies `{ "ok": false, "error": "row_gone" }`.
   - The clash check compares cells as trimmed text. A date cell compares as the ISO text that `load` sends.
   - `saveCells` refuses Listing id, Total monthly cost, Overall rating and the 4 list cells. It refuses a Status outside the 5, and a rating that is not a whole number from 1 to 5 or empty.
-  - `editList` takes Pros and Cons. An item cannot hold a ";". It refuses Notes until the owner decides how notes are split. Ticket 10 adds Photos.
+  - `editList` takes Pros and Cons. An item cannot hold a ";". It refuses Notes until the owner decides how notes are split. It takes Photos too, from ticket 10.
   - `saveCells` refuses a call that sends the same column twice.
   - A click on the picked rating clears it.
   - A failed call may hide a write that worked, so the app reads the row again and shows what the sheet holds.
@@ -340,6 +340,15 @@ Source: [Find a free way to turn an Indian address into a map spot](.scratch/ren
 - It sends one photo per call, as base64 in the JSON body.
 - The script saves it to the Drive folder, shares it as "anyone with the link can view", and returns the file id.
 - To show a Drive photo, the page uses `https://drive.google.com/thumbnail?id=<ID>&sz=w1600`. Google does not document this URL. Keep a fallback: a script call that returns the photo as base64, shown as a `data:` URL and cached in the browser.
+
+- **Built (ticket 10).** The page code is `public/lib/photos.mjs` and the Overview tab in `public/app.mjs`. The Apps Script actions are `uploadPhoto` and `getPhoto`.
+  - `uploadPhoto` takes `{ id, data }`, where data is the base64 JPEG. It refuses data that is not base64, not a JPEG, or over 5 MB, and a gone row. It checks the row before it writes to Drive. It replies `{ "ok": true, "fileId": <id> }`.
+  - The page then sends `editList` with column Photos and `add: "https://drive.google.com/file/d/<ID>/view"`. A Photos add must be a link in that form. A Photos remove takes any link, like a site link.
+  - The Drive folder is the one in the Photos folder row of the Settings tab. The row holds the folder link or the bare id.
+  - `getPhoto` takes `{ fileId }` and replies `{ "ok": true, "mimeType", "data" }`. It returns only a file in the Photos folder. Anyone with the `/exec` URL can call it, and the script runs as the sheet owner, so it must not return the owner's other files.
+  - The page keeps each fallback photo in the browser's Cache Storage, under `rental-map-photos`.
+  - Several photos upload one at a time. The first one that fails stops the rest.
+  - A phone photo turns upright from its EXIF data before it shrinks. A PNG gets a white ground, because a JPEG has no see-through parts.
 
 ## Check before the build
 

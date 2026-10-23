@@ -1,4 +1,4 @@
-// Runs apps-script/Code.gs in a Node vm with a fake SpreadsheetApp and ContentService.
+// Runs apps-script/Code.gs in a Node vm with a fake SpreadsheetApp, ContentService, DriveApp and Utilities.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -7,6 +7,7 @@ import { TRACKER_COLUMNS, PLACES_COLUMNS, SETTINGS_COLUMNS, STATUSES } from "../
 import { ALREADY_ON_MAP, linkKey } from "../public/lib/same-listing.mjs";
 import { CLASH, ITEM_COLUMNS, ROW_GONE, addItem, removeItem } from "../public/lib/our-take.mjs";
 import { EDIT_COLUMNS, LOCKED_COLUMNS, OUR_TAKE_COLUMNS } from "../public/lib/edit-listing.mjs";
+import { driveFileId, driveLink } from "../public/lib/photos.mjs";
 
 const code = readFileSync(new URL("../apps-script/Code.gs", import.meta.url), "utf8");
 
@@ -55,8 +56,81 @@ function fakeLock(log, { busy = false } = {}) {
   };
 }
 
+// Apps Script bytes are signed, like Java bytes, so 0xFF is -1.
+const signedBytes = (buffer) => [...buffer].map((b) => (b > 127 ? b - 256 : b));
+
+function fakeUtilities() {
+  return {
+    base64Decode(text) {
+      // Node reads bad base64 without a word. Apps Script throws.
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4) throw new Error("Could not decode string.");
+      return signedBytes(Buffer.from(text, "base64"));
+    },
+    base64Encode: (bytes) => Buffer.from(bytes.map((b) => b & 0xff)).toString("base64"),
+    newBlob: (bytes, type, name) => ({ bytes, type, name, getBytes: () => bytes, getContentType: () => type }),
+  };
+}
+
+// The fake Drive keeps folders and files in maps. Each step that touches Drive goes in the log.
+function fakeDrive(log) {
+  const folders = new Map();
+  const files = new Map();
+  let count = 0;
+  const newId = (start) => `${start}${String(++count).padStart(15, "0")}`;
+  function makeFolder(name) {
+    const id = newId("D");
+    const folder = {
+      id,
+      name,
+      getId: () => id,
+      getUrl: () => `https://drive.google.com/drive/folders/${id}`,
+      createFile(blob) {
+        log.push("drive createFile");
+        return makeFile(blob, folder);
+      },
+    };
+    folders.set(id, folder);
+    return folder;
+  }
+  function makeFile(blob, parent) {
+    const id = newId("F");
+    const file = {
+      id,
+      blob,
+      sharing: null,
+      getId: () => id,
+      getBlob: () => blob,
+      setSharing(access, permission) {
+        log.push("drive setSharing");
+        file.sharing = [access, permission];
+      },
+      getParents() {
+        const left = [parent];
+        return { hasNext: () => left.length > 0, next: () => left.shift() };
+      },
+    };
+    files.set(id, file);
+    return file;
+  }
+  const drive = {
+    Access: { ANYONE_WITH_LINK: "ANYONE_WITH_LINK" },
+    Permission: { VIEW: "VIEW" },
+    createFolder: makeFolder,
+    getFolderById(id) {
+      if (!folders.has(id)) throw new Error("No item with the given ID could be found.");
+      return folders.get(id);
+    },
+    getFileById(id) {
+      if (!files.has(id)) throw new Error("No item with the given ID could be found.");
+      return files.get(id);
+    },
+  };
+  return { drive, folders, files, makeFile };
+}
+
 function runScript(tabs, { busy = false } = {}) {
   const log = [];
+  const drive = fakeDrive(log);
   const sheets = new Map(tabs.map((t) => [t.name, t]));
   const spreadsheet = {
     getSheetByName: (name) => sheets.get(name) ?? null,
@@ -69,6 +143,8 @@ function runScript(tabs, { busy = false } = {}) {
   const context = {
     SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet, flush: () => log.push("flush") },
     LockService: { getScriptLock: () => fakeLock(log, { busy }) },
+    DriveApp: drive.drive,
+    Utilities: fakeUtilities(),
     ContentService: {
       MimeType: { JSON: "json" },
       createTextOutput: (text) => ({ text, setMimeType() { return this; } }),
@@ -76,7 +152,7 @@ function runScript(tabs, { busy = false } = {}) {
   };
   vm.createContext(context);
   vm.runInContext(code, context);
-  return { context, sheets, log };
+  return { context, sheets, log, drive };
 }
 
 function post(context, body) {
@@ -95,15 +171,29 @@ test("setup makes the 3 tabs with the spec headers in row 1", () => {
   assert.deepEqual(sheets.get("Settings").cells[2], ["City", "Bangalore"]);
 });
 
+test("setup makes the Photos folder in Drive once, and writes its link in the Settings tab", () => {
+  const { context, sheets, drive } = runScript([]);
+  context.setup();
+  assert.equal(drive.folders.size, 1);
+  const [folder] = drive.folders.values();
+  assert.equal(folder.name, "Rental map photos");
+  assert.deepEqual(sheets.get("Settings").cells[3], ["Photos folder", folder.getUrl()]);
+
+  context.setup();
+  assert.equal(drive.folders.size, 1);
+  assert.equal(sheets.get("Settings").cells.length, 4);
+});
+
 test("setup adds the City row to a Settings tab that lacks it, and keeps the rows it has", () => {
   const settings = fakeSheet("Settings", [["Setting", "Value"], ["Budget (₹/month)", 45000]]);
   const { context } = runScript([settings]);
   context.setup();
-  assert.deepEqual(settings.cells, [["Setting", "Value"], ["Budget (₹/month)", 45000], ["City", "Bangalore"]]);
+  assert.deepEqual(settings.cells.slice(0, 3), [["Setting", "Value"], ["Budget (₹/month)", 45000], ["City", "Bangalore"]]);
+  assert.equal(settings.cells[3][0], "Photos folder");
 
   settings.cells[2][1] = "Pune";
   context.setup();
-  assert.equal(settings.cells.length, 3);
+  assert.equal(settings.cells.length, 4);
   assert.equal(settings.cells[2][1], "Pune");
 });
 
@@ -622,4 +712,125 @@ test("the script's addItem and removeItem give the same cell as the page's", () 
       assert.equal(context.removeItem(cell, item), removeItem(cell, item), `remove ${item} from ${cell}`);
     }
   }
+});
+
+// --- Photo upload: uploadPhoto, getPhoto, and Photos in editList ---
+
+// A small JPEG: it starts with FF D8 like every JPEG.
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0xff, 0xd9]).toString("base64");
+
+// One saved listing, L-abc, and a Settings tab whose Photos folder row setup filled.
+function photoScript(over = {}) {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const settings = fakeSheet("Settings", [["Setting", "Value"]]);
+  const script = runScript([tracker, settings]);
+  script.context.setup();
+  post(script.context, { action: "addListing", listing: newRow({ Photos: "", ...over }) });
+  script.log.length = 0;
+  const [folder] = script.drive.folders.values();
+  return { ...script, tracker, settings, folder };
+}
+
+test("uploadPhoto saves the photo in the Photos folder outside the lock, shares it and returns the file id", () => {
+  const { context, log, drive, folder, tracker } = photoScript();
+  const reply = post(context, { action: "uploadPhoto", id: "L-abc", data: JPEG });
+  assert.equal(reply.ok, true);
+  const file = drive.files.get(reply.fileId);
+  assert.ok(file, "the file id is a file in Drive");
+  assert.deepEqual(file.getParents().next(), folder);
+  assert.deepEqual(file.sharing, ["ANYONE_WITH_LINK", "VIEW"]);
+  assert.equal(file.blob.type, "image/jpeg");
+  assert.equal(Buffer.from(file.blob.bytes.map((b) => b & 0xff)).toString("base64"), JPEG);
+  assert.match(file.blob.name, /^L-abc .+\.jpg$/);
+  assert.deepEqual(log, ["drive createFile", "drive setSharing"], "no lock and no sheet write");
+  assert.equal(cellOf(tracker, 1, "Photos"), "");
+});
+
+test("the Drive link of an upload goes into the Photos cell with add one item, and the page reads the id back", () => {
+  const { context, tracker } = photoScript({ Photos: "https://imagecdn.99acres.com/a.jpg" });
+  const { fileId } = post(context, { action: "uploadPhoto", id: "L-abc", data: JPEG });
+  const link = driveLink(fileId);
+  const reply = post(context, { action: "editList", id: "L-abc", column: "Photos", add: link });
+  assert.equal(reply.ok, true);
+  assert.equal(cellOf(tracker, 1, "Photos"), `https://imagecdn.99acres.com/a.jpg; https://drive.google.com/file/d/${fileId}/view`);
+  assert.equal(driveFileId(cellOf(tracker, 1, "Photos").split("; ")[1]), fileId);
+});
+
+test("a × removes one photo link and the file stays in Drive", () => {
+  const { context, tracker, drive } = photoScript();
+  const { fileId } = post(context, { action: "uploadPhoto", id: "L-abc", data: JPEG });
+  post(context, { action: "editList", id: "L-abc", column: "Photos", add: driveLink(fileId) });
+  const reply = post(context, { action: "editList", id: "L-abc", column: "Photos", remove: driveLink(fileId) });
+  assert.equal(reply.ok, true);
+  assert.equal(cellOf(tracker, 1, "Photos"), "");
+  assert.ok(drive.files.has(fileId));
+});
+
+test("editList takes a site photo link to remove, but adds only a Drive link", () => {
+  const { context, tracker } = photoScript({ Photos: "https://imagecdn.99acres.com/a.jpg" });
+  assert.deepEqual(post(context, { action: "editList", id: "L-abc", column: "Photos", add: "https://example.com/b.jpg" }), {
+    ok: false,
+    error: "A new photo must be a Drive link like https://drive.google.com/file/d/<ID>/view.",
+  });
+  assert.equal(post(context, { action: "editList", id: "L-abc", column: "Photos", remove: "https://imagecdn.99acres.com/a.jpg" }).ok, true);
+  assert.equal(cellOf(tracker, 1, "Photos"), "");
+});
+
+test("uploadPhoto refuses data that is not a base64 JPEG, and a gone row, and saves nothing", () => {
+  const { context, drive } = photoScript();
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64");
+  assert.deepEqual(post(context, { action: "uploadPhoto", id: "L-abc" }), { ok: false, error: "Send the photo as base64 in data." });
+  assert.deepEqual(post(context, { action: "uploadPhoto", id: "L-abc", data: "not base64!" }), { ok: false, error: "The photo is not base64." });
+  assert.deepEqual(post(context, { action: "uploadPhoto", id: "L-abc", data: png }), { ok: false, error: "The photo is not a JPEG." });
+  assert.deepEqual(post(context, { action: "uploadPhoto", id: "L-gone", data: JPEG }), { ok: false, error: ROW_GONE });
+  assert.equal(drive.files.size, 0);
+});
+
+test("uploadPhoto refuses a photo over 5 MB", () => {
+  const { context, drive } = photoScript();
+  const big = Buffer.alloc(5 * 1024 * 1024 + 1);
+  big[0] = 0xff;
+  big[1] = 0xd8;
+  assert.deepEqual(post(context, { action: "uploadPhoto", id: "L-abc", data: big.toString("base64") }), {
+    ok: false,
+    error: "The photo is bigger than 5 MB.",
+  });
+  assert.equal(drive.files.size, 0);
+});
+
+test("uploadPhoto says to run setup when the Settings tab has no Photos folder", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const settings = fakeSheet("Settings", [["Setting", "Value"], ["Photos folder", ""]]);
+  const { context, drive } = runScript([tracker, settings]);
+  post(context, { action: "addListing", listing: newRow() });
+  assert.deepEqual(post(context, { action: "uploadPhoto", id: "L-abc", data: JPEG }), {
+    ok: false,
+    error: "No Photos folder in the Settings tab. Run setup in the Apps Script editor.",
+  });
+  assert.equal(drive.files.size, 0);
+});
+
+test("the Photos folder row may hold the bare folder id", () => {
+  const { context, settings, folder } = photoScript();
+  settings.cells[3][1] = folder.getId();
+  assert.equal(post(context, { action: "uploadPhoto", id: "L-abc", data: JPEG }).ok, true);
+});
+
+test("getPhoto returns an uploaded photo as base64, with no lock", () => {
+  const { context, log } = photoScript();
+  const { fileId } = post(context, { action: "uploadPhoto", id: "L-abc", data: JPEG });
+  log.length = 0;
+  assert.deepEqual(post(context, { action: "getPhoto", fileId }), { ok: true, mimeType: "image/jpeg", data: JPEG });
+  assert.deepEqual(log, []);
+});
+
+test("getPhoto returns no file outside the Photos folder, and refuses a bad id", () => {
+  const { context, drive } = photoScript();
+  // Another file of the sheet owner. Anyone with the /exec URL must not read it.
+  const other = drive.makeFile({ getBytes: () => [1], getContentType: () => "text/plain" }, drive.drive.createFolder("Taxes"));
+  const notHere = { ok: false, error: "No photo with that id in the Photos folder." };
+  assert.deepEqual(post(context, { action: "getPhoto", fileId: other.getId() }), notHere);
+  assert.deepEqual(post(context, { action: "getPhoto", fileId: "F999999999999999" }), notHere);
+  assert.deepEqual(post(context, { action: "getPhoto", fileId: "../x" }), { ok: false, error: "Send a Drive file id." });
+  assert.deepEqual(post(context, { action: "getPhoto" }), { ok: false, error: "Send a Drive file id." });
 });
