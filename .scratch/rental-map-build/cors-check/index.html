@@ -41,8 +41,13 @@
           });
           const text = await res.text();
           const reply = JSON.parse(text);
-          const works = reply.ok === true && reply.got && reply.got.n === 42;
-          verdict.textContent = works ? "WORKS" : "FAILS: reply is not the echo";
+          const echoed = reply.ok === true && reply.got && reply.got.n === sent.n;
+          const works = echoed && res.redirected;
+          verdict.textContent = works
+            ? "WORKS"
+            : echoed
+              ? "FAILS: reply came back, but not through a 302"
+              : "FAILS: reply is not the echo";
           verdict.className = works ? "ok" : "fail";
           out.textContent = JSON.stringify(
             { status: res.status, redirected: res.redirected, finalUrl: res.url, reply },

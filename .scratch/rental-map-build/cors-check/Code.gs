@@ -14,14 +14,16 @@ function doPost(e) {
   } catch (err) {
     reply = { ok: false, error: String(err) };
   }
-  return ContentService.createTextOutput(JSON.stringify(reply)).setMimeType(
-    ContentService.MimeType.JSON,
-  );
+  return json(reply);
 }
 
 // Open the /exec URL in a browser tab to see that the deploy is live.
 function doGet() {
-  return ContentService.createTextOutput(
-    JSON.stringify({ ok: true, method: "GET" }),
-  ).setMimeType(ContentService.MimeType.JSON);
+  return json({ ok: true, method: "GET" });
+}
+
+function json(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(
+    ContentService.MimeType.JSON,
+  );
 }
