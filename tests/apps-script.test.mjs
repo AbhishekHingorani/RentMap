@@ -3,9 +3,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { TRACKER_COLUMNS, PLACES_COLUMNS, SETTINGS_COLUMNS } from "../public/lib/columns.mjs";
+import { TRACKER_COLUMNS, PLACES_COLUMNS, SETTINGS_COLUMNS, STATUSES } from "../public/lib/columns.mjs";
 import { ALREADY_ON_MAP, linkKey } from "../public/lib/same-listing.mjs";
-import { CLASH, ROW_GONE, addItem, removeItem } from "../public/lib/our-take.mjs";
+import { CLASH, ITEM_COLUMNS, ROW_GONE, addItem, removeItem } from "../public/lib/our-take.mjs";
 
 const code = readFileSync(new URL("../apps-script/Code.gs", import.meta.url), "utf8");
 
@@ -495,6 +495,14 @@ test("saveCells refuses a bad Status, a bad rating, and cells it must not write"
     assert.deepEqual(post(context, { action: "saveCells", id: "L-abc", cells: [cell] }), { ok: false, error }, cell.column);
   }
   assert.deepEqual(post(context, { action: "saveCells", id: "L-abc", cells: [] }), { ok: false, error: "A save needs at least one cell." });
+  const twice = [
+    { column: "Status", old: "To call", new: "Visited" },
+    { column: "Status", old: "To call", new: "Rejected" },
+  ];
+  assert.deepEqual(post(context, { action: "saveCells", id: "L-abc", cells: twice }), {
+    ok: false,
+    error: "A save sends each column once: Status",
+  });
   assert.equal(JSON.stringify(tracker.cells), before);
 });
 
@@ -536,11 +544,22 @@ test("editList refuses a gone row, another column, and an item with ;", () => {
     ok: false,
     error: 'An item cannot hold a ";".',
   });
+  assert.deepEqual(post(context, { action: "editList", id: "L-abc", column: "Notes", add: "x" }), {
+    ok: false,
+    error: "Notes is not a list cell.",
+  });
+  assert.deepEqual(post(context, { action: "editList", id: "L-abc", add: "x" }), { ok: false, error: "undefined is not a list cell." });
   assert.deepEqual(post(context, { action: "editList", id: "L-abc", column: "Pros", add: " " }), {
     ok: false,
     error: "Send one item to add or to remove.",
   });
   assert.equal(cellOf(tracker, 1, "Pros"), "Quiet street");
+});
+
+test("the script's Status and item lists match the page's", () => {
+  const { context } = runScript([]);
+  assert.deepEqual([...vm.runInContext("STATUSES", context)], STATUSES);
+  assert.deepEqual([...vm.runInContext("ITEM_COLUMNS", context)], ITEM_COLUMNS);
 });
 
 test("the script's addItem and removeItem give the same cell as the page's", () => {

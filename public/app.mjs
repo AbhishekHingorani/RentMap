@@ -21,6 +21,7 @@ import {
   ITEM_COLUMNS,
   ROW_GONE,
   cellChange,
+  itemName,
   itemProblem,
   ratingAfterClick,
   ratingValue,
@@ -173,6 +174,8 @@ const state = {
   pickedId: null,
   // The open listing details. null when they are closed. See freshDetail.
   detail: null,
+  // Goes up with each save, so a read of the row that began before a save cannot undo it.
+  saves: 0,
   markers: new Map(),
   roughCircle: null,
   listScroll: 0,
@@ -337,20 +340,6 @@ function fieldList(listing, columns) {
   return list;
 }
 
-function itemList(listing, column) {
-  const items = itemsOf(listing, column);
-  const wrap = el("div", "items");
-  wrap.append(el("h4", "", column));
-  if (!items.length) {
-    wrap.append(el("p", "not-given", NOT_GIVEN));
-    return wrap;
-  }
-  const list = el("ul");
-  list.append(...items.map((item) => el("li", "", item)));
-  wrap.append(list);
-  return wrap;
-}
-
 function section(title, ...children) {
   const part = el("section", "details-part");
   part.append(el("h3", "", title), ...children);
@@ -438,7 +427,7 @@ function ratingChoices(listing, take) {
 
 // One pro or con list: each item has a "×", and a box adds one more.
 function itemEditor(listing, column, detail, take) {
-  const name = column === "Pros" ? "pro" : "con";
+  const name = itemName(column);
   const wrap = el("div", "items");
   wrap.append(el("h4", "", column));
   const items = itemsOf(listing, column);
@@ -658,9 +647,9 @@ function markPin(id, picked) {
 }
 
 // What the open details hold besides the listing. notice is a line under the header, like a save with no map spot.
-// drafts keeps a half-typed pro or con. version goes up with each save, so an older read cannot undo it.
+// drafts keeps a half-typed pro or con.
 function freshDetail(id, notice) {
-  return { id, tab: 0, busy: false, message: null, notice, drafts: { Pros: "", Cons: "" }, gone: false, version: 0 };
+  return { id, tab: 0, busy: false, message: null, notice, drafts: { Pros: "", Cons: "" }, gone: false };
 }
 
 function openDetails(id, { notice = "" } = {}) {
@@ -753,7 +742,7 @@ function rowGone(id) {
 }
 
 async function readListingAgain(detail) {
-  const version = detail.version;
+  const saves = state.saves;
   let reply;
   try {
     reply = await callScript({ action: "getListing", id: detail.id });
@@ -761,7 +750,8 @@ async function readListingAgain(detail) {
     reply = { ok: false, error: err.message };
   }
   // A save since this read began has a newer row, and a save in flight will bring one.
-  if (detail.version !== version || detail.busy) return;
+  // This counts saves from any details view, so a read from a closed view cannot undo a later save.
+  if (state.saves !== saves || detail.busy) return;
   if (reply.ok) putListing(reply.listing);
   else if (reply.error === ROW_GONE) rowGone(detail.id);
   else if (state.detail === detail) {
@@ -780,7 +770,7 @@ function saveCell(column, value) {
 // done runs after a save that worked.
 async function sendEdit(body, done = () => {}) {
   const detail = state.detail;
-  detail.version++;
+  state.saves++;
   Object.assign(detail, { busy: true, message: null });
   renderDetails();
   let reply;

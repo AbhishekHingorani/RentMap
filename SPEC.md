@@ -296,7 +296,8 @@ Example: Asha changes Rent to ₹40,000. Ravi opened the same listing 10 minutes
   - `saveCells` takes `cells: [{ column, old, new }]`. A clash replies `{ "ok": false, "error": "clash", "clashes": [<columns>], "listing": <sheet row> }`. A gone row replies `{ "ok": false, "error": "row_gone" }`.
   - The clash check compares cells as trimmed text. A date cell compares as the ISO text that `load` sends.
   - `saveCells` refuses Listing id, Total monthly cost, Overall rating and the 4 list cells. It refuses a Status outside the 5, and a rating that is not a whole number from 1 to 5 or empty.
-  - `editList` takes Pros, Cons and Photos. An item cannot hold a ";". It refuses Notes until the owner decides how notes are split.
+  - `editList` takes Pros and Cons. An item cannot hold a ";". It refuses Notes until the owner decides how notes are split. Ticket 10 adds Photos.
+  - `saveCells` refuses a call that sends the same column twice.
   - A click on the picked rating clears it.
   - A failed call may hide a write that worked, so the app reads the row again and shows what the sheet holds.
   - A row with no Listing id cannot be saved. Its Our take tab says so.

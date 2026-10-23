@@ -56,11 +56,13 @@ var PIN_PRECISIONS = ["building", "society", "locality"];
 var RATING_COLUMNS = ["Safety", "Water supply", "Location", "Condition", "Natural light"];
 // The script works these out from the other cells. The page never writes them.
 var WORKED_OUT_COLUMNS = ["Total monthly cost", "Overall rating"];
+// public/lib/columns.mjs has the same list. tests/apps-script.test.mjs checks that they match.
 var STATUSES = ["To call", "Visit scheduled", "Visited", "Shortlisted", "Rejected"];
 // These cells hold items split by ";". A save changes them one item at a time, with editList, so they never clash.
 var LIST_COLUMNS = ["Pros", "Cons", "Notes", "Photos"];
 // editList takes these. Notes wait for the owner to decide how notes are split. See "Known gaps" in SPEC.md.
-var ITEM_COLUMNS = ["Pros", "Cons", "Photos"];
+// public/lib/our-take.mjs has the same list.
+var ITEM_COLUMNS = ["Pros", "Cons"];
 var LOCK_WAIT_MS = 20000;
 
 // Run this once from the Apps Script editor. It adds any missing tab and writes its headers.
@@ -235,9 +237,12 @@ function getListing(id) {
 // If any differs, nothing is written and the reply holds the sheet values and the clashing columns.
 function saveCells(id, cells) {
   if (!Array.isArray(cells) || !cells.length) return { ok: false, error: "A save needs at least one cell." };
+  var seen = {};
   for (var i = 0; i < cells.length; i++) {
     var problem = cellProblem(cells[i]);
     if (problem) return { ok: false, error: problem };
+    if (seen[cells[i].column]) return { ok: false, error: "A save sends each column once: " + cells[i].column };
+    seen[cells[i].column] = true;
   }
   return withLock(function () {
     var found = findListingRow(SpreadsheetApp.getActiveSpreadsheet(), id);
@@ -301,7 +306,7 @@ function cellText(value) {
 // "Add one item" or "remove one item" for a list cell. The script changes the cell as it is in the sheet now,
 // so these saves never clash. Removing an item that is already gone counts as done.
 function editList(id, column, add, remove) {
-  if (ITEM_COLUMNS.indexOf(column) === -1) return { ok: false, error: column + " is not a list cell." };
+  if (ITEM_COLUMNS.indexOf(column) === -1) return { ok: false, error: String(column) + " is not a list cell." };
   var adding = typeof add === "string" && add.trim() !== "";
   var removing = typeof remove === "string" && remove.trim() !== "";
   if (adding === removing) return { ok: false, error: "Send one item to add or to remove." };

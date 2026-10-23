@@ -6,12 +6,18 @@ import { splitItems, toText } from "./listings.mjs";
 // The Apps Script replies with these errors when it refuses a save.
 export const CLASH = "clash";
 export const ROW_GONE = "row_gone";
+export const BUSY = "busy";
 
 // The list cells the Our take tab changes one item at a time. Notes wait for the owner to decide
-// how notes are split inside the Notes cell. See "Known gaps" in SPEC.md.
+// how notes are split inside the Notes cell. See "Known gaps" in SPEC.md. Code.gs has the same list.
 export const ITEM_COLUMNS = ["Pros", "Cons"];
 
 const ITEM_NAMES = { Pros: "pro", Cons: "con" };
+
+// "pro" for Pros and "con" for Cons, for the words on the screen.
+export function itemName(column) {
+  return ITEM_NAMES[column] ?? "item";
+}
 
 // One cell for a saveCells call. old is the value as the page got it from the sheet.
 export function cellChange(listing, column, value) {
@@ -45,7 +51,7 @@ export function removeItem(cell, item) {
 
 // Why a typed pro or con cannot be added, or "" when it can.
 export function itemProblem(column, item) {
-  const name = ITEM_NAMES[column] ?? "item";
+  const name = itemName(column);
   if (!item.trim()) return `Type a ${name} first.`;
   if (item.includes(";")) return `A ${name} cannot hold a ";". The sheet uses ";" to split the items.`;
   return "";
@@ -60,6 +66,6 @@ export function refusalMessage(reply) {
     return `Someone ${change}. Your change was not saved.`;
   }
   if (reply.error === ROW_GONE) return "This listing is no longer in the sheet.";
-  if (reply.error === "busy") return "The sheet is busy. Your change was not saved. Click again in a moment.";
+  if (reply.error === BUSY) return "The sheet is busy. Your change was not saved. Click again in a moment.";
   return `The Apps Script said: ${reply.error}. Your change was not saved.`;
 }
