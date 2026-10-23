@@ -4,8 +4,10 @@
 import { TRACKER_COLUMNS } from "./columns.mjs";
 import { toText } from "./listings.mjs";
 import { REPLY_COLUMNS, fieldProblems, fixValue } from "./add-listing.mjs";
-import { cellChange } from "./our-take.mjs";
+import { ITEM_COLUMNS, cellChange } from "./our-take.mjs";
+import { RATING_COLUMNS } from "./details.mjs";
 
+// tests/apps-script.test.mjs checks that saveCells refuses each of these but Lat, Long and Pin precision.
 // These never change in the Edit form. The app or the Apps Script fills them, and Move pin changes Lat and Long.
 export const LOCKED_COLUMNS = [
   "Listing id",
@@ -20,18 +22,8 @@ export const LOCKED_COLUMNS = [
 ];
 
 // The Our take tab changes these. The list cells change one item at a time, so a whole-cell save cannot touch them.
-export const OUR_TAKE_COLUMNS = [
-  "Status",
-  "Safety",
-  "Water supply",
-  "Location",
-  "Condition",
-  "Natural light",
-  "Pros",
-  "Cons",
-  "Notes",
-  "Photos",
-];
+// Notes and Photos wait for the owner and for ticket 10, but they are list cells too.
+export const OUR_TAKE_COLUMNS = ["Status", ...RATING_COLUMNS, ...ITEM_COLUMNS, "Notes", "Photos"];
 
 // The cells the Edit form makes editable, in sheet order: the Claude-filled cells and the 3 contact cells
 // a person fills by hand, because no other part of the app can change those.
@@ -52,8 +44,9 @@ export function editForm(row) {
   return { base, values, clashes: {} };
 }
 
+// Spaces at the ends do not count, because the sheet gets the value trimmed.
 function changed(form, column) {
-  return form.values[column] !== toText(form.base[column]);
+  return toText(form.values[column]) !== toText(form.base[column]);
 }
 
 // The cells to send, as { column, old, new }, and one message for each value Save must refuse.

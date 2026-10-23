@@ -594,7 +594,8 @@ function allFieldsPanel(listing, detail) {
   const move = detail.moving
     ? fieldButton("Stop moving", "move-stop", take, stopMoving)
     : fieldButton("Move pin", "move", take, startMoving);
-  move.disabled ||= Boolean(problem);
+  // Stop moving must work even when a filter change hid the pin during the move.
+  if (!detail.moving) move.disabled ||= Boolean(problem);
   actions.append(edit, move);
   parts.push(actions);
   if (detail.moving) parts.push(el("p", "add-hint", "Drag the pin on the map to the right spot. The app saves it when you drop it."));
@@ -650,16 +651,15 @@ function clashNote(detail, field) {
   const note = el("div", "edit-clash");
   note.append(el("p", "", `In the sheet now: ${now || "empty"}`));
   const take = { canSave: true, busy: detail.busy };
-  const use = fieldButton("Use sheet value", `edit-use-${field.number}`, take, () => {
-    useSheetValue(edit, field.column);
-    renderDetails();
-    detailsEl.querySelector(`[data-key="edit-${field.number}"]`)?.focus();
-  });
-  const keep = fieldButton("Keep mine", `edit-keep-${field.number}`, take, () => {
-    keepMine(edit, field.column);
-    renderDetails();
-    detailsEl.querySelector(`[data-key="edit-${field.number}"]`)?.focus();
-  });
+  // Each way out takes the mark off, then puts focus back in the box.
+  const pick = (text, key, choose) =>
+    fieldButton(text, `edit-${key}-${field.number}`, take, () => {
+      choose(edit, field.column);
+      renderDetails();
+      detailsEl.querySelector(`[data-key="edit-${field.number}"]`)?.focus();
+    });
+  const use = pick("Use sheet value", "use", useSheetValue);
+  const keep = pick("Keep mine", "keep", keepMine);
   const buttons = el("div", "add-row");
   buttons.append(use, keep);
   note.append(buttons);
@@ -1038,14 +1038,22 @@ function stopMoving() {
 // The app does not try again.
 async function dropPin(id, latLng) {
   const detail = state.detail;
-  if (detail?.id !== id || !detail.moving || detail.busy) return;
+  if (detail?.id !== id || !detail.moving) return;
+  // Another save is still out, so this drop cannot be sent now. The pin goes back and stays draggable.
+  if (detail.busy) {
+    putPinBack(id);
+    state.markers.get(id)?.dragging?.enable();
+    detail.message = { text: "Wait for the save to finish, then drag the pin again.", kind: "error" };
+    renderDetails();
+    return;
+  }
   detail.moving = false;
   state.markers.get(id)?.dragging?.disable();
   const listing = listingById(id);
   const reply = await sendEdit({ action: "saveCells", id: listing.row["Listing id"], cells: pinCells(listing, latLng) });
   if (reply?.ok) return;
   putPinBack(id);
-  if (reply?.error === CLASH && state.detail === detail) {
+  if (reply?.error === CLASH && reply.clashes?.some((c) => c === "Lat" || c === "Long") && state.detail === detail) {
     detail.message = { text: PIN_CLASH_MESSAGE, kind: "error" };
     renderDetails();
   }

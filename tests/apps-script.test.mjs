@@ -6,6 +6,7 @@ import vm from "node:vm";
 import { TRACKER_COLUMNS, PLACES_COLUMNS, SETTINGS_COLUMNS, STATUSES } from "../public/lib/columns.mjs";
 import { ALREADY_ON_MAP, linkKey } from "../public/lib/same-listing.mjs";
 import { CLASH, ITEM_COLUMNS, ROW_GONE, addItem, removeItem } from "../public/lib/our-take.mjs";
+import { EDIT_COLUMNS, LOCKED_COLUMNS, OUR_TAKE_COLUMNS } from "../public/lib/edit-listing.mjs";
 
 const code = readFileSync(new URL("../apps-script/Code.gs", import.meta.url), "utf8");
 
@@ -543,6 +544,17 @@ test("saveCells refuses a bad Status, a bad rating, and cells it must not write"
     error: "A save sends each column once: Status",
   });
   assert.equal(JSON.stringify(tracker.cells), before);
+});
+
+test("saveCells refuses each column the Edit form locks, except the 3 that Move pin writes", () => {
+  const { context } = savedTracker();
+  for (const column of LOCKED_COLUMNS.filter((c) => !["Lat", "Long", "Pin precision"].includes(c))) {
+    const reply = post(context, { action: "saveCells", id: "L-abc", cells: [{ column, old: "", new: "x" }] });
+    assert.equal(reply.ok, false, column);
+    assert.match(reply.error, /^The app cannot write /, column);
+  }
+  // The Edit form and the Our take tab between them cover every column.
+  assert.equal(EDIT_COLUMNS.length + LOCKED_COLUMNS.length + OUR_TAKE_COLUMNS.length, TRACKER_COLUMNS.length);
 });
 
 test("saveCells returns busy when the lock does not come, and writes nothing", () => {

@@ -66,6 +66,9 @@ test("Save sends only the changed cells, each with the value the person saw", ()
 test("an untouched hand-typed cell is not sent, even when the app would write it another way", () => {
   const form = editForm(row);
   assert.deepEqual(editCells(form), { cells: [], problems: [] });
+  form.values["Broker phone"] = "  ";
+  form.values.Locality = "Sarjapur Road ";
+  assert.deepEqual(editCells(form), { cells: [], problems: [] });
 });
 
 test("an edit to Locality or Society sends no Lat, Long or Pin precision", () => {
