@@ -18,7 +18,7 @@ import {
   toText,
 } from "/lib/listings.mjs";
 import { CONFIGURATIONS, STATUSES } from "/lib/columns.mjs";
-import { budgetFrom, filterListings, isOverBudget, startFilters } from "/lib/filters.mjs";
+import { budgetFrom, filterListings, isOverBudget, isRejected, startFilters } from "/lib/filters.mjs";
 import {
   CLASH,
   ITEM_COLUMNS,
@@ -501,12 +501,18 @@ function pinIcon(listing, picked) {
   return L.divIcon({ className: "pin-anchor", html: label.outerHTML, iconSize: null });
 }
 
+// The open listing's pin goes on top. Rejected pins come next, so "Show rejected" does not hide them under other pins.
+function pinLayerOrder(listing, picked) {
+  if (picked) return 1000;
+  return isRejected(listing) ? 500 : 0;
+}
+
 function pin(listing) {
   // The list draws again after a save, so the open listing keeps its picked pin.
   const picked = listing.id === state.pickedId;
   // The list can draw again while the person moves the pin, so the new marker stays draggable.
   const draggable = picked && Boolean(state.detail?.moving);
-  const marker = L.marker(listing.spot, { icon: pinIcon(listing, picked), keyboard: false, zIndexOffset: picked ? 1000 : 0, draggable });
+  const marker = L.marker(listing.spot, { icon: pinIcon(listing, picked), keyboard: false, zIndexOffset: pinLayerOrder(listing, picked), draggable });
   // A drop ends with a click on the pin. Its details are open already, so the click must not open them again.
   marker.on("click", () => {
     if (state.detail?.id !== listing.id) openDetails(listing.id);
@@ -1038,7 +1044,7 @@ function markPin(id, picked) {
   const listing = listingById(id);
   if (!marker || !listing) return;
   marker.setIcon(pinIcon(listing, picked));
-  marker.setZIndexOffset(picked ? 1000 : 0);
+  marker.setZIndexOffset(pinLayerOrder(listing, picked));
 }
 
 // Marks the card of the open listing, so the list shows which one the details column holds.
