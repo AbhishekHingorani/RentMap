@@ -1,14 +1,17 @@
 // The local web server. Start it with `node server.js`.
 // It serves the page from public/ on http://localhost and opens it in Chrome.
 // Pass --no-open to skip opening Chrome.
+// POST /api/geocode finds a map spot. See geocoder.js.
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
+const { createGeocoder } = require("./geocoder.js");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const CONFIG_FILE = path.join(__dirname, "config.json");
 const DEFAULT_PORT = 8790;
+const MAX_BODY_BYTES = 10_000;
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -52,16 +55,88 @@ function fileFor(urlPath) {
   return file;
 }
 
-function createServer(config) {
+function sendJson(res, status, body) {
+  res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  res.end(JSON.stringify(body));
+}
+
+// The server listens on localhost only, but any page open in Chrome can still call it.
+// A DNS-rebinding page sends its own host name, so only localhost names pass.
+function isLocalHost(hostHeader) {
+  const name = String(hostHeader || "").replace(/:\d+$/, "").toLowerCase();
+  return name === "localhost" || name === "127.0.0.1" || name === "[::1]";
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("The request is too big."));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      let body;
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        body = null;
+      }
+      if (body && typeof body === "object" && !Array.isArray(body)) resolve(body);
+      else reject(new Error("The request is not a JSON object."));
+    });
+    req.on("error", reject);
+  });
+}
+
+// The geocoder switch is "geocoding" in config.json. Set it to false to turn the geocoder off.
+async function geocodeRoute(req, res, config, geocoder) {
+  if (config.geocoding === false) {
+    sendJson(res, 503, { ok: false, error: "The geocoder is off. Set geocoding to true in config.json to turn it on." });
+    return;
+  }
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (err) {
+    sendJson(res, 400, { ok: false, error: err.message });
+    return;
+  }
+  try {
+    const spot = await geocoder.geocode({ society: body.society, locality: body.locality, city: body.city });
+    sendJson(res, 200, { ok: true, spot });
+  } catch (err) {
+    sendJson(res, 502, { ok: false, error: err.message });
+  }
+}
+
+function createServer(config, { geocoder = createGeocoder() } = {}) {
   return http.createServer((req, res) => {
+    if (!isLocalHost(req.headers.host)) {
+      res.writeHead(403).end();
+      return;
+    }
+    const urlPath = new URL(req.url, "http://localhost").pathname;
+    if (req.method === "POST" && urlPath === "/api/geocode") {
+      // A cross-site HTML form cannot send application/json, so it cannot use the geocoder.
+      if (!/^application\/json\b/i.test(req.headers["content-type"] || "")) {
+        res.writeHead(415).end();
+        return;
+      }
+      geocodeRoute(req, res, config, geocoder);
+      return;
+    }
     if (req.method !== "GET" && req.method !== "HEAD") {
       res.writeHead(405).end();
       return;
     }
-    const urlPath = new URL(req.url, "http://localhost").pathname;
     if (urlPath === "/api/config") {
-      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-      res.end(JSON.stringify({ appsScriptUrl: config.appsScriptUrl || null }));
+      sendJson(res, 200, { appsScriptUrl: config.appsScriptUrl || null, geocoding: config.geocoding !== false });
       return;
     }
     const file = fileFor(urlPath);

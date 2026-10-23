@@ -784,3 +784,200 @@ body {
   width: 2rem;
   color: var(--ink-soft);
 }
+
+/* Left column tabs: Listings and Places */
+.side-tabs {
+  padding: 0 1.25rem;
+  background: var(--surface);
+}
+
+/* Distance to each place, on a card and on the Overview tab */
+.card-distances {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem 0.75rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.card-distances .distance-place {
+  margin-right: 0.25rem;
+  color: var(--ink-soft);
+}
+
+.distances {
+  display: grid;
+  grid-template-columns: minmax(8rem, 45%) 1fr;
+  gap: 0.375rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+.distances li {
+  display: contents;
+}
+
+.distances .distance-place {
+  color: var(--ink-soft);
+}
+
+/* Places tab */
+.places-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.place-list {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  list-style: none;
+}
+
+.place {
+  padding: 0.625rem 0.5rem;
+}
+
+.place + .place {
+  border-top: 1px solid var(--line);
+}
+
+.place-name {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.place-open {
+  display: inline-flex;
+  gap: 0.375rem;
+  align-items: baseline;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  text-align: left;
+}
+
+button.place-open {
+  cursor: pointer;
+}
+
+button.place-open:hover {
+  text-decoration: underline;
+}
+
+.place-star {
+  color: var(--ink);
+}
+
+.place-address,
+.place-facts {
+  margin: 0.125rem 0 0;
+  font-size: 0.8125rem;
+}
+
+.place-facts {
+  color: var(--ink-soft);
+}
+
+.place-empty {
+  padding: 0.75rem 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.place-form {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0.75rem 1.5rem;
+  padding: 0.875rem 0.5rem 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.8125rem;
+}
+
+.place-form h2 {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.place-form label {
+  display: grid;
+  gap: 0.1875rem;
+  font-weight: 500;
+}
+
+.place-form input {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid oklch(70% 0.015 175);
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.place-form button {
+  justify-self: start;
+  padding: 0.4375rem 0.875rem;
+  border: 0;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--shell-ink);
+  background: var(--shell);
+  cursor: pointer;
+}
+
+.place-form button:hover {
+  background: oklch(36% 0.05 165);
+}
+
+.place-form button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.place-note {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.place-note--error {
+  color: var(--error);
+}
+
+/* Place on the map: a black star with its name, set apart from the listing price tags. */
+.place-pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  transform: translate(-0.6rem, -50%);
+  font: 600 0.8125rem/1.2 "Plex Sans", system-ui, sans-serif;
+  color: oklch(15% 0 0);
+  white-space: nowrap;
+  text-shadow: 0 0 2px oklch(100% 0 0), 0 0 2px oklch(100% 0 0), 0 0 4px oklch(100% 0 0);
+  pointer-events: auto;
+}
+
+.place-pin .place-star {
+  font-size: 1.375rem;
+  line-height: 1;
+  color: oklch(15% 0 0);
+}

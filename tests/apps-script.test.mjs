@@ -34,7 +34,21 @@ function fakeSheet(name, cells = []) {
   };
 }
 
-function runScript(tabs) {
+// The fake lock records each step, so a test can check that the write happened inside it.
+function fakeLock(log, { busy = false } = {}) {
+  return {
+    waitLock(ms) {
+      log.push(`wait ${ms}`);
+      if (busy) throw new Error("Lock timeout");
+    },
+    releaseLock() {
+      log.push("release");
+    },
+  };
+}
+
+function runScript(tabs, { busy = false } = {}) {
+  const log = [];
   const sheets = new Map(tabs.map((t) => [t.name, t]));
   const spreadsheet = {
     getSheetByName: (name) => sheets.get(name) ?? null,
@@ -45,7 +59,8 @@ function runScript(tabs) {
     },
   };
   const context = {
-    SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet },
+    SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet, flush: () => log.push("flush") },
+    LockService: { getScriptLock: () => fakeLock(log, { busy }) },
     ContentService: {
       MimeType: { JSON: "json" },
       createTextOutput: (text) => ({ text, setMimeType() { return this; } }),
@@ -53,7 +68,7 @@ function runScript(tabs) {
   };
   vm.createContext(context);
   vm.runInContext(code, context);
-  return { context, sheets };
+  return { context, sheets, log };
 }
 
 function post(context, body) {
@@ -69,6 +84,19 @@ test("setup makes the 3 tabs with the spec headers in row 1", () => {
   assert.deepEqual(sheets.get("Places").cells[0], PLACES_COLUMNS);
   assert.deepEqual(sheets.get("Settings").cells[0], SETTINGS_COLUMNS);
   assert.deepEqual(sheets.get("Settings").cells[1], ["Budget (₹/month)", ""]);
+  assert.deepEqual(sheets.get("Settings").cells[2], ["City", "Bangalore"]);
+});
+
+test("setup adds the City row to a Settings tab that lacks it, and keeps the rows it has", () => {
+  const settings = fakeSheet("Settings", [["Setting", "Value"], ["Budget (₹/month)", 45000]]);
+  const { context } = runScript([settings]);
+  context.setup();
+  assert.deepEqual(settings.cells, [["Setting", "Value"], ["Budget (₹/month)", 45000], ["City", "Bangalore"]]);
+
+  settings.cells[2][1] = "Pune";
+  context.setup();
+  assert.equal(settings.cells.length, 3);
+  assert.equal(settings.cells[2][1], "Pune");
 });
 
 test("setup leaves a tab that has data alone", () => {
@@ -118,4 +146,65 @@ test("the test rows for the sheet fit the Tracker columns and each has a map spo
     const long = Number(cells[TRACKER_COLUMNS.indexOf("Long")]);
     assert.ok(lat > 0 && long > 0, line);
   }
+});
+
+const OFFICE = { name: "Office", address: "Embassy Tech Village, Outer Ring Road", lat: 12.93, long: 77.69, precision: "building" };
+
+test("addPlace writes Name, Address, Lat, Long, Pin precision and Added by inside the lock", () => {
+  const places = fakeSheet("Places", [PLACES_COLUMNS]);
+  const { context, log } = runScript([places]);
+
+  const reply = post(context, { action: "addPlace", place: OFFICE, addedBy: "Asha" });
+
+  assert.equal(reply.ok, true);
+  assert.deepEqual(places.cells[1], ["Office", "Embassy Tech Village, Outer Ring Road", 12.93, 77.69, "building", "Asha"]);
+  assert.deepEqual(reply.place, {
+    Name: "Office",
+    Address: "Embassy Tech Village, Outer Ring Road",
+    Lat: 12.93,
+    Long: 77.69,
+    "Pin precision": "building",
+    "Added by": "Asha",
+  });
+  assert.deepEqual(log, ["wait 20000", "flush", "release"]);
+});
+
+test("addPlace writes by the row 1 headers, so a moved column gets the right value", () => {
+  const places = fakeSheet("Places", [["Added by", "Name", "Lat", "Long", "Address", "Pin precision"]]);
+  const { context } = runScript([places]);
+  post(context, { action: "addPlace", place: OFFICE, addedBy: "Ravi" });
+  assert.deepEqual(places.cells[1], ["Ravi", "Office", 12.93, 77.69, "Embassy Tech Village, Outer Ring Road", "building"]);
+});
+
+test("a retried addPlace with the same name and address adds no second row", () => {
+  const places = fakeSheet("Places", [PLACES_COLUMNS]);
+  const { context } = runScript([places]);
+  post(context, { action: "addPlace", place: OFFICE, addedBy: "Asha" });
+  const again = post(context, { action: "addPlace", place: { ...OFFICE, name: " office " }, addedBy: "Asha" });
+  assert.equal(again.ok, true);
+  assert.equal(places.cells.length, 2);
+  assert.equal(again.place.Name, "Office");
+});
+
+test("addPlace returns busy when the lock does not come, and writes nothing", () => {
+  const places = fakeSheet("Places", [PLACES_COLUMNS]);
+  const { context, log } = runScript([places], { busy: true });
+  assert.deepEqual(post(context, { action: "addPlace", place: OFFICE, addedBy: "Asha" }), { ok: false, error: "busy" });
+  assert.equal(places.cells.length, 1);
+  assert.deepEqual(log, ["wait 20000"]);
+});
+
+test("addPlace refuses a place with no name, no map spot or an unknown Pin precision", () => {
+  const places = fakeSheet("Places", [PLACES_COLUMNS]);
+  const { context } = runScript([places]);
+  const cases = [
+    [{ ...OFFICE, name: " " }, "A place needs a name and an address."],
+    [{ ...OFFICE, lat: null }, "A place needs a map spot."],
+    [{ ...OFFICE, long: "77.6" }, "A place needs a map spot."],
+    [{ ...OFFICE, precision: "city" }, "Unknown Pin precision: city"],
+  ];
+  for (const [place, error] of cases) {
+    assert.deepEqual(post(context, { action: "addPlace", place, addedBy: "Asha" }), { ok: false, error });
+  }
+  assert.equal(places.cells.length, 1);
 });

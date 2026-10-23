@@ -1,4 +1,5 @@
 {
   "appsScriptUrl": "https://script.google.com/macros/s/PASTE-YOUR-DEPLOYMENT-ID/exec",
-  "port": 8790
+  "port": 8790,
+  "geocoding": true
 }

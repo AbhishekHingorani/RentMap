@@ -25,6 +25,16 @@ Do these steps once, from the Google account that owns the sheet.
 
 To change the script later, edit the existing deployment and pick a new version. A new deployment gets a new URL.
 
+After you paste a new `Code.gs`, run `setup` again. It adds any Settings row the sheet lacks, like City, and keeps the rows that are there.
+
+## Places and the geocoder
+
+The Places tab in the left column lists places like an office. Its form takes a name and an address. The local web server finds the map spot through Nominatim and Photon, at most 1 request a second. The page then writes the place to the Places tab of the sheet. Each card shows the straight-line distance to each place.
+
+The geocoder looks inside the city in the City row of the Settings tab. `setup` writes Bangalore there. Change the cell for another city.
+
+To turn the geocoder off, set `"geocoding": false` in `config.json` and start the app again. The app then cannot find a map spot for a new place.
+
 ## Test with a few rows
 
 Open `apps-script/test-rows.tsv`, copy all 3 lines, click cell A2 of the Tracker tab, and paste. Each row has Lat and Long, so each one gets a pin. Reload the page.

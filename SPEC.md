@@ -284,6 +284,11 @@ Source: [Find a free way to turn an Indian address into a map spot](.scratch/ren
 - Each listing is geocoded once. The sheet row is the cache, so the app does not ask again once Lat and Long are filled.
 - Put the geocoder behind a config switch, so it can be turned off without a code change.
 - If the listing page gives lat and long, use those and skip geocoding.
+- **Built (ticket 04).** The code is `geocoder.js`, called through `POST /api/geocode` on the local web server. The switch is `"geocoding": false` in `config.json`.
+  - The page sends the City from the Settings tab with each call. The server first looks up the city itself on Nominatim, once per city while it runs. That lookup cannot have a `viewbox`, because it is what makes the box. The `viewbox` is the city's box grown by 0.1 degree on each side, so suburbs on the edge fit.
+  - Photon names the filters `countrycode` and `bbox`. The server sends both, with the same box.
+  - A good hit is inside the box and is a building, a society or a locality. A hit as rough as a whole city does not count. Photon has no `place_rank` or `addresstype`, so its `type` gives the Pin precision: house is building, street is society, locality and district are locality.
+  - A place has no society or locality. Its Address goes in as the first query, then Photon. If no query finds it, the app does not save the place and says why.
 
 ## Photos uploaded by hand
 

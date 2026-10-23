@@ -25,7 +25,11 @@
           <h1>Rental map</h1>
           <p class="who" id="who" hidden></p>
         </header>
-        <div class="list-view" id="list-view">
+        <div class="tab-bar side-tabs" id="side-tabs" role="tablist" aria-label="Left column">
+          <button class="tab" id="side-tab-listings" type="button" role="tab" data-tab="listings" aria-controls="list-view" aria-selected="true">Listings</button>
+          <button class="tab" id="side-tab-places" type="button" role="tab" data-tab="places" aria-controls="places-view" aria-selected="false" tabindex="-1">Places</button>
+        </div>
+        <div class="list-view" id="list-view" role="tabpanel" aria-labelledby="side-tab-listings">
           <form class="filters" id="filters" aria-label="Filters" hidden>
             <div class="filters-row">
               <label class="filter-max">
@@ -56,6 +60,22 @@
           <ol class="list" id="list"></ol>
         </div>
         <article class="details" id="details" hidden></article>
+        <div class="places-view" id="places-view" role="tabpanel" aria-labelledby="side-tab-places" hidden>
+          <ol class="place-list" id="place-list"></ol>
+          <form class="place-form" id="place-form" aria-labelledby="place-form-title">
+            <h2 id="place-form-title">Add a place</h2>
+            <label>
+              <span>Name</span>
+              <input name="name" required maxlength="60" placeholder="Office" autocomplete="off" />
+            </label>
+            <label>
+              <span>Address</span>
+              <input name="address" required maxlength="200" placeholder="Embassy Tech Village, Outer Ring Road" autocomplete="off" />
+            </label>
+            <button type="submit">Add the place</button>
+            <p class="place-note" id="place-note" aria-live="polite"></p>
+          </form>
+        </div>
       </section>
       <div class="map" id="map" aria-label="Map of listings"></div>
     </main>
