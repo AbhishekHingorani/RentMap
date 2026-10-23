@@ -137,7 +137,7 @@ function localClaudeRoute(runClaude) {
     }
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
     if (!prompt) {
-      sendJson(res, 400, { ok: false, error: "Paste the text the bookmarklet copied." });
+      sendJson(res, 400, { ok: false, error: "Paste the prompt the bookmarklet copied." });
       return;
     }
     if (running) {

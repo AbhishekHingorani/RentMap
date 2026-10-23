@@ -35,7 +35,7 @@ const FURNISHINGS = ["Unfurnished", "Semi-furnished", "Fully furnished"];
 const YES_NO = ["Yes", "No"];
 
 // Every line of the step 1 prompt after the first. The words may change. The keys must stay as REPLY_COLUMNS has them.
-const PROMPT_TAIL = [
+export const PROMPT_TAIL = [
   "Reply with one JSON object in a ```json block and nothing else.",
   "Keys: society, locality, configuration (1RK|1BHK|2BHK|3BHK|4BHK+),",
   "listedBy (Owner|Dealer), brokerName, rent, maintenance, deposit,",
@@ -56,14 +56,9 @@ export function stepOnePrompt(link) {
 export const STEP_TWO_START = "Here is the listing page data: ";
 
 // The step 2 prompt is the step 1 prompt with the page data in place of the link.
-// The bookmarklet cannot import this module, so it gets the data line and the tail from bookmarklet.mjs.
+// The bookmarklet cannot import this module, so bookmarklet.mjs puts STEP_TWO_START and PROMPT_TAIL into its code.
 export function stepTwoPrompt(data) {
   return [`${STEP_TWO_START}${data}`, PROMPT_TAIL].join("\n");
-}
-
-// Every line of the step 2 prompt after the page data.
-export function stepTwoTail() {
-  return PROMPT_TAIL;
 }
 
 // Text pasted for "Ask my local Claude" is most often the whole step 2 prompt the bookmarklet copied.

@@ -2,7 +2,7 @@
 // It runs on the listing page the person has open, reads the page data and copies the step 2 prompt.
 // The bookmark holds only its own code. It loads nothing, because the listing site's CSP would block that.
 // So readListingPage, copyPrompt and showOnPage must each use nothing from outside the function.
-import { STEP_TWO_START, stepTwoTail } from "./add-listing.mjs";
+import { PROMPT_TAIL, STEP_TWO_START } from "./add-listing.mjs";
 
 export const RELOAD = "Reload this page and click again.";
 
@@ -130,6 +130,6 @@ export function showOnPage(win, message, text) {
 export function bookmarkletHref() {
   const code =
     `(${copyPrompt.toString()})(window, ${readListingPage.toString()}, ${showOnPage.toString()}, ` +
-    `${JSON.stringify(STEP_TWO_START)}, ${JSON.stringify(stepTwoTail())});void 0`;
+    `${JSON.stringify(STEP_TWO_START)}, ${JSON.stringify(PROMPT_TAIL)});void 0`;
   return `javascript:${encodeURIComponent(code)}`;
 }

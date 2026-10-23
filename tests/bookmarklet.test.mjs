@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { RELOAD, bookmarkletHref, copyPrompt, readListingPage, showOnPage } from "../public/lib/bookmarklet.mjs";
-import { STEP_TWO_START, stepTwoPrompt, stepTwoTail } from "../public/lib/add-listing.mjs";
+import { PROMPT_TAIL, STEP_TWO_START, stepTwoPrompt } from "../public/lib/add-listing.mjs";
 
 // The saved 99acres page in samples/. Its window.__initialData__ is one inline JSON object.
 const SAMPLES = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "samples");
@@ -72,7 +72,7 @@ test("the bookmarklet copies the step 2 prompt, with the page data on its first 
   const copied = [];
   const win = fakeWindow({ initialData: INITIAL_DATA, clipboard: { writeText: async (text) => copied.push(text) } });
   const { shown, show } = recorder();
-  await copyPrompt(win, readListingPage, show, STEP_TWO_START, stepTwoTail());
+  await copyPrompt(win, readListingPage, show, STEP_TWO_START, PROMPT_TAIL);
   assert.equal(copied.length, 1);
   assert.equal(copied[0], stepTwoPrompt(readListingPage(win).data));
   assert.ok(copied[0].startsWith(`Here is the listing page data: {"Prop_Id":"M93900012"`));
@@ -83,13 +83,13 @@ test("the bookmarklet copies the step 2 prompt, with the page data on its first 
 test("a failed copy shows the prompt in a box with a Copy button", async () => {
   const win = fakeWindow({ text: "Some page", clipboard: { writeText: async () => Promise.reject(new Error("NotAllowedError")) } });
   const { shown, show } = recorder();
-  await copyPrompt(win, readListingPage, show, STEP_TWO_START, stepTwoTail());
+  await copyPrompt(win, readListingPage, show, STEP_TWO_START, PROMPT_TAIL);
   assert.deepEqual(shown, [["Could not copy. Click Copy, or press Cmd+C.", stepTwoPrompt("Some page")]]);
 });
 
 test("a browser with no clipboard also gets the box", async () => {
   const { shown, show } = recorder();
-  await copyPrompt(fakeWindow({ text: "Some page" }), readListingPage, show, STEP_TWO_START, stepTwoTail());
+  await copyPrompt(fakeWindow({ text: "Some page" }), readListingPage, show, STEP_TWO_START, PROMPT_TAIL);
   assert.equal(shown[0][1], stepTwoPrompt("Some page"));
 });
 
@@ -97,7 +97,7 @@ test("a mismatched page says to reload and copies nothing", async () => {
   const copied = [];
   const win = fakeWindow({ initialData: INITIAL_DATA, href: "https://www.99acres.com/x-spid-R1", clipboard: { writeText: async (t) => copied.push(t) } });
   const { shown, show } = recorder();
-  await copyPrompt(win, readListingPage, show, STEP_TWO_START, stepTwoTail());
+  await copyPrompt(win, readListingPage, show, STEP_TWO_START, PROMPT_TAIL);
   assert.deepEqual(shown, [[RELOAD]]);
   assert.deepEqual(copied, []);
 });

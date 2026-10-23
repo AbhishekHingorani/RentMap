@@ -704,7 +704,7 @@ function freshAdd() {
   };
 }
 
-// What the Claude steps hold for one link.
+// Resets what the Claude web and bookmarklet steps hold, for a new link.
 function freshReading() {
   return { bookmarklet: false, failure: "", pageReplyText: "", localText: "" };
 }
@@ -832,6 +832,16 @@ function linkStep(add) {
   return [form];
 }
 
+const CLAUDE_WEB = "https://claude.ai/new";
+
+function newTabLink(text, href) {
+  const link = el("a", "add-link", text);
+  link.href = href;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  return link;
+}
+
 function claudeStep(add) {
   const promptBox = el("textarea", "add-prompt");
   promptBox.readOnly = true;
@@ -853,12 +863,8 @@ function claudeStep(add) {
       copied.textContent = "Press Cmd+C to copy.";
     }
   });
-  const claude = el("a", "add-link", "Open Claude web");
-  claude.href = "https://claude.ai/new";
-  claude.target = "_blank";
-  claude.rel = "noopener noreferrer";
   const copyRow = el("div", "add-row");
-  copyRow.append(copy, claude, copied);
+  copyRow.append(copy, newTabLink("Open Claude web", CLAUDE_WEB), copied);
 
   const form = el("form", "add-form");
   const label = el("label");
@@ -937,16 +943,8 @@ function bookmarkletStep(add) {
   });
   const bookmarkRow = el("div", "add-row");
   bookmarkRow.append(bookmark, dragNote);
-  const listing = el("a", "add-link", "Open the listing page");
-  listing.href = add.link;
-  listing.target = "_blank";
-  listing.rel = "noopener noreferrer";
-  const claude = el("a", "add-link", "Open Claude web");
-  claude.href = "https://claude.ai/new";
-  claude.target = "_blank";
-  claude.rel = "noopener noreferrer";
   const openRow = el("div", "add-row");
-  openRow.append(listing, claude);
+  openRow.append(newTabLink("Open the listing page", add.link), newTabLink("Open Claude web", CLAUDE_WEB));
   parts.push(
     el("p", "add-hint", "Once: drag this button to the bookmarks bar in Chrome. If you do not see the bar, press Cmd+Shift+B."),
     bookmarkRow,
@@ -983,14 +981,14 @@ function bookmarkletStep(add) {
 
   const localForm = el("form", "add-form add-local");
   const localLabel = el("label");
-  const localText = el("textarea");
-  localText.rows = 4;
-  localText.placeholder = "Paste the prompt the bookmarklet copied";
-  localText.value = add.localText;
-  localText.addEventListener("input", () => {
-    add.localText = localText.value;
+  const localBox = el("textarea");
+  localBox.rows = 4;
+  localBox.placeholder = "Paste the prompt the bookmarklet copied";
+  localBox.value = add.localText;
+  localBox.addEventListener("input", () => {
+    add.localText = localBox.value;
   });
-  localLabel.append(el("span", "", "Have Claude Code on this computer? Paste the prompt here instead."), localText);
+  localLabel.append(el("span", "", "Have Claude Code on this computer? Paste the prompt here instead."), localBox);
   const ask = el("button", "add-secondary", add.busy ? "Asking local Claude…" : "Ask my local Claude");
   ask.type = "submit";
   ask.disabled = add.busy;
@@ -1001,7 +999,7 @@ function bookmarkletStep(add) {
   localForm.addEventListener("submit", (event) => {
     event.preventDefault();
     add.pageReplyText = webReply.value;
-    askLocalClaude(add);
+    requestLocalClaude(add);
   });
 
   parts.push(webForm, localForm);
@@ -1009,7 +1007,7 @@ function bookmarkletStep(add) {
 }
 
 // Sends the pasted text to the local web server, which runs claude -p. On any failure the pasted text stays in the box.
-async function askLocalClaude(add) {
+async function requestLocalClaude(add) {
   if (!add.localText.trim()) {
     add.error = "Paste the prompt the bookmarklet copied, then click Ask my local Claude.";
     renderAddSteps();

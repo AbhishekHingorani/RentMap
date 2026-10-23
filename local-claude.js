@@ -5,7 +5,8 @@ const { execFile } = require("node:child_process");
 const os = require("node:os");
 
 const TIMEOUT_MS = 180_000;
-const BUDGET_STOPPED = "Local Claude stopped. Use the Claude web prompt.";
+const USE_WEB = "Use the Claude web prompt.";
+const BUDGET_STOPPED = `Local Claude stopped. ${USE_WEB}`;
 
 // The exact flags from the spec. Each value is its own argument, so "" reaches claude as an empty value.
 function claudeArgs(schema) {
@@ -40,20 +41,20 @@ function runClaude(args, input) {
 async function askLocalClaude(prompt, { schema, run = runClaude }) {
   const { stdout, error } = await run(claudeArgs(schema), prompt);
   if (error && error.code === "ENOENT") {
-    return { status: 503, body: { ok: false, error: "Claude Code is not on this computer: the claude command was not found. Use the Claude web prompt." } };
+    return { status: 503, body: { ok: false, error: `Claude Code is not on this computer: the claude command was not found. ${USE_WEB}` } };
   }
   let result;
   try {
     result = JSON.parse(stdout);
   } catch {
     const why = error && error.killed ? "It took longer than 3 minutes." : "It gave no JSON.";
-    return { status: 502, body: { ok: false, error: `Local Claude failed. ${why} Use the Claude web prompt.` } };
+    return { status: 502, body: { ok: false, error: `Local Claude failed. ${why} ${USE_WEB}` } };
   }
   if (result.subtype === "error_max_budget_usd") return { status: 200, body: { ok: false, error: BUDGET_STOPPED } };
   const reply = result.structured_output;
   if (!reply || typeof reply !== "object" || Array.isArray(reply)) {
     const errors = Array.isArray(result.errors) && result.errors.length ? ` It said: ${result.errors.join(" ")}` : "";
-    return { status: 502, body: { ok: false, error: `Local Claude gave no structured_output.${errors} Use the Claude web prompt.` } };
+    return { status: 502, body: { ok: false, error: `Local Claude gave no structured_output.${errors} ${USE_WEB}` } };
   }
   return { status: 200, body: { ok: true, reply } };
 }
