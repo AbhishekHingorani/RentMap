@@ -26,7 +26,16 @@ import {
   toText,
 } from "/lib/listings.mjs";
 import { CONFIGURATIONS, PERSON_RATING_COLUMNS, TRACKER_COLUMNS } from "/lib/columns.mjs";
-import { budgetFrom, filterListings, isOverBudget, startFilters } from "/lib/filters.mjs";
+import {
+  SCORE_CHOICES,
+  SHORTLIST_CHOICES,
+  budgetFrom,
+  filterListings,
+  isOverBudget,
+  priceChoices,
+  startFilters,
+  startPriceChoice,
+} from "/lib/filters.mjs";
 import { DEFAULT_SORT, sortChoices, sortListings } from "/lib/sort.mjs";
 import {
   CLASH,
@@ -63,6 +72,7 @@ import {
   coordinatesText,
   distanceHue,
   distanceRanges,
+  distanceScorer,
   distanceShare,
   editPlaceBody,
   editedPlaceIn,
@@ -233,7 +243,8 @@ const state = {
   city: "",
   budget: null,
   filters: startFilters(null),
-  // The Sort by choice. It lives in memory only, like the filters.
+  // The Filter by and Sort by choices. They live in memory only, like the filters.
+  filterBy: { price: "any", score: "any", shortlist: "all" },
   sort: DEFAULT_SORT,
   pickedId: null,
   // The open listing details. null when they are closed. See freshDetail.
@@ -454,7 +465,8 @@ async function fetchFallbackPhoto(fileId) {
   return src;
 }
 
-function card(listing) {
+// scoreOf gives the distance score, from scoreOf() below.
+function card(listing, scoreOf) {
   const item = el("li", "card");
   item.dataset.id = listing.id;
 
@@ -494,7 +506,7 @@ function card(listing) {
   if (tags.childElementCount) body.append(tags);
 
   if (!listing.spot) body.append(el("p", "card-note", "No map spot yet"));
-  else if (state.places.length) body.append(distanceList(listing, "card-distances"));
+  else if (state.places.length) body.append(distanceScoreLine(listing, scoreOf(listing)));
 
   item.append(photo, body);
   hoverLinks(item, () => state.markers.get(listing.id), ".pin", () => (listing.id === state.pickedId ? 1000 : 0));
@@ -516,6 +528,31 @@ function hoverLinks(item, markerOf, pinSelector, restZ) {
   item.addEventListener("focusout", (event) => {
     if (!item.contains(event.relatedTarget)) show(false);
   });
+}
+
+// The distance score of each listing against all listings, for the cards, Filter by and Sort by.
+function scoreOf() {
+  return distanceScorer(state.listings, state.places);
+}
+
+// A place with a map spot is needed for a distance score.
+function hasScore() {
+  return state.places.some((place) => place.spot);
+}
+
+// The card shows one distance score, not a distance per place. Green is close to all places, red is far.
+function distanceScoreLine(listing, score) {
+  const line = el("p", "card-distances");
+  line.title = "Average closeness to all places, out of 10. 10 is the nearest listing to every place.";
+  line.append(el("span", "distance-place", "Distance score"));
+  if (score === null) {
+    line.append(el("span", "not-given", NOT_GIVEN));
+    return line;
+  }
+  const value = el("span", "distance-value", `${score} / 10`);
+  value.style.setProperty("--hue", distanceHue(1 - score / 10));
+  line.append(value);
+  return line;
 }
 
 // The straight-line distance to each place, worked out each time it is drawn. Its colour runs from green for
@@ -598,7 +635,7 @@ function pin(listing) {
 // The Sort by choices change when a place is added or renamed. A choice that is gone falls back to price.
 function fillSortChoices() {
   const select = document.getElementById("sort-by");
-  const choices = sortChoices(state.places);
+  const choices = sortChoices(state.places, scoreOf());
   if (!choices.some((c) => c.value === state.sort)) state.sort = DEFAULT_SORT;
   select.replaceChildren(
     ...choices.map((choice) => {
@@ -610,10 +647,42 @@ function fillSortChoices() {
   );
 }
 
+// Fills one dropdown. A picked choice that is gone falls back to the first, and returns that choice.
+function fillChoices(select, choices, picked) {
+  const kept = choices.find((c) => c.value === picked) ?? choices[0];
+  select.replaceChildren(
+    ...choices.map((choice) => {
+      const option = el("option", "", choice.label);
+      option.value = choice.value;
+      option.selected = choice === kept;
+      return option;
+    }),
+  );
+  return kept;
+}
+
+// The 3 Filter by dropdowns. The price steps come from the listings, so a save can add or take away a step.
+// A step that is gone falls back to "Any price", and the filters follow it.
+function fillFilterChoices() {
+  const price = fillChoices(document.getElementById("filter-price"), priceChoices(state.budget, state.listings), state.filterBy.price);
+  const score = fillChoices(document.getElementById("filter-score"), SCORE_CHOICES, state.filterBy.score);
+  const shortlist = fillChoices(document.getElementById("filter-shortlist"), SHORTLIST_CHOICES, state.filterBy.shortlist);
+  const scoreBox = document.getElementById("filter-score-box");
+  scoreBox.hidden = !hasScore();
+  state.filterBy = { price: price.value, score: scoreBox.hidden ? "any" : score.value, shortlist: shortlist.value };
+  Object.assign(state.filters, {
+    maxCost: price.maxCost,
+    minScore: scoreBox.hidden ? null : score.minScore,
+    shortlistedOnly: shortlist.shortlistedOnly,
+  });
+}
+
 function renderList() {
+  fillFilterChoices();
   fillSortChoices();
-  const shown = sortListings(filterListings(state.listings, state.filters), state.sort, state.places);
-  listEl.replaceChildren(...shown.map(card));
+  const score = scoreOf();
+  const shown = sortListings(filterListings(state.listings, state.filters, score), state.sort, state.places, score);
+  listEl.replaceChildren(...shown.map((listing) => card(listing, score)));
   pinLayer.clearLayers();
   state.markers.clear();
   for (const listing of shown) {
@@ -632,13 +701,9 @@ function renderList() {
 // --- Filters ---
 
 function setUpFilters() {
-  const max = document.getElementById("filter-max");
   const search = document.getElementById("filter-search");
-  const shortlisted = document.getElementById("filter-shortlisted");
   const sort = document.getElementById("sort-by");
   const configs = document.getElementById("filter-configs");
-
-  max.value = state.filters.maxCost === null ? "" : String(state.filters.maxCost);
   configs.replaceChildren(
     ...CONFIGURATIONS.map((configuration) => {
       const label = el("label", "filter-config");
@@ -653,12 +718,15 @@ function setUpFilters() {
 
   filtersEl.addEventListener("submit", (event) => event.preventDefault());
   filtersEl.addEventListener("input", () => {
-    // An empty box means no cap. A half-typed number reads as empty until it is a number.
-    const cap = max.value.trim() === "" ? null : Number(max.value);
+    // renderList reads the 3 Filter by dropdowns into the filters.
+    state.filterBy = {
+      price: document.getElementById("filter-price").value,
+      score: document.getElementById("filter-score").value,
+      shortlist: document.getElementById("filter-shortlist").value,
+    };
     state.filters = {
-      maxCost: Number.isFinite(cap) ? cap : null,
+      ...state.filters,
       configurations: new Set([...configs.querySelectorAll("input:checked")].map((box) => box.value)),
-      shortlistedOnly: shortlisted.checked,
       search: search.value,
     };
     state.sort = sort.value;
@@ -1283,7 +1351,7 @@ function renderDetails() {
       parts.push(notice);
     }
     // The filters stay as the person set them. The note says why the pin is not on the map.
-    if (!filterListings([listing], state.filters).length) parts.push(el("p", "details-hidden", "Your filters hide this listing on the map."));
+    if (!filterListings([listing], state.filters, scoreOf()).length) parts.push(el("p", "details-hidden", "Your filters hide this listing on the map."));
     parts.push(tabs(listing, detail));
     detailsEl.replaceChildren(...parts);
   }
@@ -2555,6 +2623,7 @@ async function start() {
     state.budget = budgetFrom(settings);
     state.city = cityFrom(settings);
     state.filters = startFilters(state.budget);
+    state.filterBy = { price: startPriceChoice(state.budget), score: "any", shortlist: "all" };
     setUpFilters();
     setUpSideTabs();
     setUpPlaceForm();

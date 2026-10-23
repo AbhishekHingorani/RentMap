@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { listingsFromRows } from "../public/lib/listings.mjs";
+import { distanceScore, distanceScorer } from "../public/lib/places.mjs";
 import { sortChoices, sortListings } from "../public/lib/sort.mjs";
 
 const rows = [
@@ -26,7 +27,27 @@ test("each sort puts missing values last and keeps their order", () => {
 test("a place with no map spot gets no distance choice, and an unknown choice sorts by price", () => {
   assert.deepEqual(
     sortChoices(places).map((c) => c.value),
-    ["price", "area", "bhk", "our-rating", "other-ratings", "locality", "distance-0"],
+    ["price", "area", "bhk", "our-rating", "other-ratings", "locality", "distance-score", "distance-0"],
   );
   assert.deepEqual(ids("distance-1"), ids("price"));
+});
+
+test("the distance score is 10 for the nearest listing to every place and 0 for the farthest", () => {
+  const two = [
+    { name: "Office", spot: [12.9, 77.7] },
+    { name: "Gym", spot: [12.95, 77.75] },
+  ];
+  const scoreOf = distanceScorer(listings, two);
+  // a sits on Office and d is next to it. b sits on Gym. c has no map spot.
+  assert.equal(scoreOf(listings.find((l) => l.id === "c")), null);
+  const a = scoreOf(listings.find((l) => l.id === "a"));
+  const b = scoreOf(listings.find((l) => l.id === "b"));
+  assert.ok(a >= 0 && a <= 10 && b >= 0 && b <= 10);
+  assert.equal(a + b, 10);
+  assert.equal(distanceScore(listings[0], [{ name: "No spot", spot: null }], [null]), null);
+  // One place: the nearest gets 10 and the farthest 0.
+  const office = distanceScorer(listings, [two[0]]);
+  assert.equal(office(listings[0]), 10);
+  assert.equal(office(listings[1]), 0);
+  assert.deepEqual(sortListings(listings, "distance-score", two, scoreOf).at(-1).id, "c");
 });

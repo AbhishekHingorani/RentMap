@@ -34,26 +34,31 @@
         </div>
         <div class="list-view" id="list-view" role="tabpanel" aria-labelledby="side-tab-listings">
           <form class="filters" id="filters" aria-label="Filters" hidden>
-            <div class="filters-row">
-              <label class="filter-max">
-                <span>Max ₹/month</span>
-                <input id="filter-max" type="number" min="0" step="1000" inputmode="numeric" placeholder="No cap" />
-              </label>
-              <label class="filter-search">
-                <span>Search</span>
-                <input id="filter-search" type="search" placeholder="Society or locality" autocomplete="off" />
-              </label>
-            </div>
+            <label class="filter-search">
+              <span>Search</span>
+              <input id="filter-search" type="search" placeholder="Society or locality" autocomplete="off" />
+            </label>
             <fieldset class="filter-configs">
               <legend>Configuration</legend>
               <div id="filter-configs"></div>
             </fieldset>
-            <div class="filters-row">
-              <label class="switch">
-                <input id="filter-shortlisted" type="checkbox" role="switch" />
-                <span>Shortlisted only</span>
-              </label>
-            </div>
+            <fieldset class="filter-by">
+              <legend>Filter by</legend>
+              <div class="filters-row">
+                <label class="filter-sort">
+                  <span>Price</span>
+                  <select id="filter-price"></select>
+                </label>
+                <label class="filter-sort" id="filter-score-box">
+                  <span>Distance score</span>
+                  <select id="filter-score"></select>
+                </label>
+                <label class="filter-sort">
+                  <span>Shortlist</span>
+                  <select id="filter-shortlist"></select>
+                </label>
+              </div>
+            </fieldset>
             <label class="filter-sort">
               <span>Sort by</span>
               <select id="sort-by"></select>

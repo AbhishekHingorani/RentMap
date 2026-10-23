@@ -1,7 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { listingsFromRows } from "../public/lib/listings.mjs";
-import { CONFIGURATIONS, budgetFrom, filterListings, isOverBudget, startFilters } from "../public/lib/filters.mjs";
+import {
+  CONFIGURATIONS,
+  budgetFrom,
+  SCORE_CHOICES,
+  SHORTLIST_CHOICES,
+  filterListings,
+  isOverBudget,
+  priceChoices,
+  startFilters,
+  startPriceChoice,
+} from "../public/lib/filters.mjs";
 
 function one(row) {
   return listingsFromRows([row])[0];
@@ -92,4 +102,51 @@ test("Over budget means the total is above the Budget", () => {
 
 test("a hand-typed Status still counts, whatever its case", () => {
   assert.equal(passes({ Shortlisted: "TRUE" }, { shortlistedOnly: true }), true);
+});
+
+test("the Price dropdown has the budget choice only when there is a Budget, then a step every 5k", () => {
+  const listings = listingsFromRows([{ "Total monthly cost": 22000 }, { "Total monthly cost": 36000 }, {}]);
+  const choices = priceChoices(45000, listings);
+  assert.deepEqual(
+    choices.map((c) => c.value),
+    ["any", "budget", "up-to-25000", "up-to-30000", "up-to-35000"],
+  );
+  assert.equal(choices[1].label, "Within budget (₹45,000)");
+  assert.deepEqual(choices[2], { value: "up-to-25000", label: "Up to ₹25k", maxCost: 25000 });
+  assert.deepEqual(priceChoices(null, listings).map((c) => c.value).slice(0, 2), ["any", "up-to-25000"]);
+  // A step on the cheapest price would keep nothing out, so it is left off.
+  const even = listingsFromRows([{ "Total monthly cost": 30000 }, { "Total monthly cost": 40000 }]);
+  assert.deepEqual(priceChoices(null, even).map((c) => c.value), ["any", "up-to-35000"]);
+});
+
+test("the Price dropdown starts at Within budget, or at Any price with no Budget, like startFilters", () => {
+  assert.equal(startPriceChoice(45000), "budget");
+  assert.equal(startPriceChoice(null), "any");
+});
+
+test("the score and shortlist dropdowns have fixed choices", () => {
+  assert.deepEqual(SCORE_CHOICES.map((c) => c.minScore), [null, 5, 6, 7, 8]);
+  assert.deepEqual(SHORTLIST_CHOICES.map((c) => c.shortlistedOnly), [false, true]);
+});
+
+test("price, score and shortlist filters work together", () => {
+  const scores = { a: 8, b: 6, c: 4 };
+  const scoreOf = (l) => scores[l.id] ?? null;
+  const listings = listingsFromRows([
+    { "Listing id": "a", "Rent (₹/month)": 24000, Shortlisted: true },
+    { "Listing id": "b", "Rent (₹/month)": 24000 },
+    { "Listing id": "c", "Rent (₹/month)": 20000, Shortlisted: true },
+    { "Listing id": "d", "Rent (₹/month)": 30000, Shortlisted: true },
+  ]);
+  const shown = (changes) => filterListings(listings, { ...startFilters(null), ...changes }, scoreOf).map((l) => l.id);
+  assert.deepEqual(shown({ maxCost: 25000, minScore: 5 }), ["a", "b"]);
+  assert.deepEqual(shown({ maxCost: 25000, minScore: 5, shortlistedOnly: true }), ["a"]);
+});
+
+test("a distance score filter hides lower scores, and a listing with no score passes", () => {
+  const scores = { a: 8.2, b: 4.9 };
+  const scoreOf = (l) => scores[l.id] ?? null;
+  const listings = listingsFromRows([{ "Listing id": "a" }, { "Listing id": "b" }, { "Listing id": "c" }]);
+  const shown = filterListings(listings, { ...startFilters(null), minScore: 5 }, scoreOf).map((l) => l.id);
+  assert.deepEqual(shown, ["a", "c"]);
 });

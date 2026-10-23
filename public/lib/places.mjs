@@ -130,3 +130,23 @@ export function coloredDistances(listing, places, ranges) {
     return { name: place.name || NOT_GIVEN, text: formatDistance(metres), hue: distanceHue(distanceShare(metres, ranges[i])) };
   });
 }
+
+// The distance score, 0 to 10, rounded to 0.1. For each place with a map spot, a listing gets 10 when it is the
+// nearest of all listings and 0 when it is the farthest. The score is the average over the places.
+// A listing with no map spot, or no place with a spot, has no score.
+export function distanceScore(listing, places, ranges) {
+  if (!listing.spot) return null;
+  const closeness = places
+    .map((place, i) => (place.spot ? 1 - distanceShare(distanceM(listing.spot, place.spot), ranges[i]) : null))
+    .filter((c) => c !== null);
+  if (!closeness.length) return null;
+  const average = closeness.reduce((a, b) => a + b, 0) / closeness.length;
+  return Math.round(average * 100) / 10;
+}
+
+// distanceScore for any listing, with the nearest and farthest worked out once from all listings.
+// A filtered list must still score against all listings, so pass state.listings here.
+export function distanceScorer(listings, places) {
+  const ranges = distanceRanges(listings, places);
+  return (listing) => distanceScore(listing, places, ranges);
+}

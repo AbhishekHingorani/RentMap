@@ -28,8 +28,9 @@ function compareKeys(a, b) {
 
 export const DEFAULT_SORT = "price";
 
-// The fixed choices, then "Distance from <place>" for each place with a map spot.
-export function sortChoices(places) {
+// The fixed choices, then the distance score and "Distance from <place>" for each place with a map spot.
+// scoreOf gives a listing's distance score, from distanceScorer in places.mjs.
+export function sortChoices(places, scoreOf = () => null) {
   const near = places
     .map((place, i) => ({ place, i }))
     .filter(({ place }) => place.spot)
@@ -39,11 +40,12 @@ export function sortChoices(places) {
       key: (l) => (l.spot ? distanceM(l.spot, place.spot) : null),
       up: true,
     }));
-  return [...FIXED, ...near];
+  const score = near.length ? [{ value: "distance-score", label: "Distance score: high to low", key: scoreOf, up: false }] : [];
+  return [...FIXED, ...score, ...near];
 }
 
-export function sortListings(listings, value, places) {
-  const choice = sortChoices(places).find((c) => c.value === value) ?? FIXED[0];
+export function sortListings(listings, value, places, scoreOf = () => null) {
+  const choice = sortChoices(places, scoreOf).find((c) => c.value === value) ?? FIXED[0];
   const keyed = listings.map((listing, index) => ({ listing, index, key: choice.key(listing) }));
   keyed.sort((a, b) => {
     // Compare without Infinity, so two missing values tie and keep their order.

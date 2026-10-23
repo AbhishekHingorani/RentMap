@@ -131,10 +131,11 @@ All design work uses Impeccable, installed in `.claude/skills/impeccable`. Lapto
 - Above the left column: a "+ Add listing" button.
 - Left column tabs: Listings (filter bar, then the list) and Places (the place list and an "add a place" form).
 - The list shows the listings the filters let through. It is sorted by Total monthly cost, lowest first. A listing with no rent goes last.
-- Each card shows: a photo, society, locality, total cost, Configuration, both ratings, and the straight-line distance to each place.
+- Each card shows: a photo, society, locality, total cost, Configuration, both ratings, and the distance score.
+- **Distance score:** 0 to 10, rounded to 0.1. For each place with a map spot, a listing gets 10 when it is the nearest of all listings and 0 when it is the farthest. The score is the average over the places. A listing with no map spot has no score. The details still show the distance to each place.
 - Total cost text runs from green for the cheapest of all listings to red for the dearest. The card and the details header use it.
 - Both ratings show as "Ours 8.5 / 10 · Others 3.6 / 5". Ours is the average of Dimple's and Abhishek's filled ratings. Others is Overall rating.
-- **Sort by:** a dropdown under the filters. Price low to high (the start choice), area big to small, BHK small to big, our rating high to low, other ratings high to low, locality A to Z, and distance from each place near to far. Area is Carpet area, or Super built-up area when Carpet area is empty. Listings with no value go last.
+- **Sort by:** a dropdown under the filters. Price low to high (the start choice), area big to small, BHK small to big, our rating high to low, other ratings high to low, locality A to Z, distance score high to low, and distance from each place near to far. Area is Carpet area, or Super built-up area when Carpet area is empty. Listings with no value go last.
 - Money is in rupees with Indian digit groups, like ₹1,17,000.
 - A value the listing does not show reads "not given".
 - Show "© OpenStreetMap contributors" on the map.
@@ -163,9 +164,11 @@ If a person saves a listing that their filters hide, its details show a yellow n
 
 Source: [Pick the map filters](.scratch/rental-map/issues/13-map-filters.md).
 
-- **Max ₹/month:** one number box. It checks Total monthly cost. If Maintenance is empty, it checks Rent alone. A listing with no Rent passes. The box starts at the Budget from the Settings tab. Changing the box does not change the sheet.
-- **Configuration:** one checkbox each for 1RK, 1BHK, 2BHK, 3BHK, 4BHK+. All are ticked at start. A listing with no Configuration, or one that is not one of the 5, has nothing to check, so it passes.
-- **Shortlisted only:** a switch, off at start.
+- **Filter by:** 3 dropdowns that work together. A listing must pass all 3.
+  - **Price:** Any price, Within budget, and steps every ₹5k like "Up to ₹25k". Within budget uses the Budget from the Settings tab and is missing when the Budget is empty. The steps run between the cheapest and the dearest listing. A price cap checks Total monthly cost. If Maintenance is empty, it checks Rent alone. A listing with no Rent passes. It starts at Within budget, or at Any price when there is no Budget.
+  - **Distance score:** Any score, or 5, 6, 7 or 8 or more. It is hidden when no place has a map spot. A listing with no score passes.
+  - **Shortlist:** All, or Shortlisted only.
+  - Changing them does not change the sheet.
 - **Search:** one box. It matches Society / building name and Locality. Case does not matter.
 - A filtered-out pin disappears from the map. Places always show.
 - The filter bar shows "N of M listings shown".
