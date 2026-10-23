@@ -82,7 +82,7 @@ Important places shared by everyone: Name, Address, Lat, Long, Pin precision, Ad
 
 ### Settings tab
 
-One value: Budget (₹/month).
+Two values: Budget (₹/month) and City. City starts as Bangalore. See [Assumptions](#assumptions).
 
 ### Who did what
 
@@ -297,13 +297,20 @@ Source: [Find a free way to turn an Indian address into a map spot](.scratch/ren
 - **CORS live test (10 minutes).** Deploy a test script. From a page on `http://localhost`, POST `text/plain` JSON to `/exec` and read the reply. The no-preflight path comes from developer reports, not Google docs.
 - **Deploy dialog.** Confirm which "Anyone" choice maps to `ANYONE_ANONYMOUS`.
 
+## Assumptions
+
+On 2026-10-23 the owner said to build on these 4 assumptions. The build tickets are in `.scratch/rental-map-build/issues/`.
+
+- **Start the app.** The command is `node server.js`. It starts the local web server and opens Chrome on `http://localhost:<port>`.
+- **City for geocoding.** The Settings tab has a City row, with Bangalore as the start value. The geocoder reads the city from it and sets the `viewbox` and the Photon bias around that city.
+- **Overall rating with some ratings empty.** Overall rating is the average of the filled ratings only. When none of the 5 is filled, it is empty.
+- **Photos cell for an upload.** It stores the full Drive link, `https://drive.google.com/file/d/<ID>/view`. The page reads the file id from the link to show the photo.
+
 ## Known gaps
 
 These are not decided. Each one needs the owner before that part is built.
 
-- **Start the app.** The one command, and what it opens.
 - **Install for others.** How other people get the app (zip file or git repo), and how they set the Apps Script address.
-- **City for geocoding.** The queries need a city and a `viewbox`, but the Settings tab has only Budget. Where the city comes from is not decided.
 - **Refresh.** How often each person's list and map read the whole sheet again, to show other people's new listings and changes.
 - **Safari.** Does the bookmarklet run on 99acres and housing.com, and does the clipboard copy work. Only Chrome on 99acres is tested.
 - **housing.com.** What data its listing page holds for the bookmarklet. Save one listing page into `samples/` first. Until then, the bookmarklet uses `innerText` there.
@@ -312,10 +319,8 @@ These are not decided. Each one needs the owner before that part is built.
 - **Cost of one local `claude -p` call** with the flags above. Not measured.
 - **Road distance** by car or bike, in place of straight-line distance. Needs a free routing service for India.
 - **Small points the tickets do not settle:**
-  - Overall rating when some of the 5 ratings are empty: average of the filled ones, or empty.
   - How notes are split inside the Notes cell.
   - Whether a place can be edited or removed.
-  - For a photo uploaded by hand, whether the Photos column stores the Drive file id or a full link.
 
 ## Out of scope
 
