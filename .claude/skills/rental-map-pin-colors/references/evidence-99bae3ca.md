@@ -1,0 +1,3 @@
++- Since 2026-10-24 the app does not show Status or rejected pins. A shortlisted pin is green and every other pin is blue.
++- Stacking is set by `pinLayerOrder(listing, picked)` in `public/app.mjs`. The open listing gets 1000. Shortlisted pins get 500. Others get 0.
+"last-prompt": "change rating to number input type and it can be from 0 to 10 with a 0.5 step size. And actually lets get rid of the status field. Don't want it."

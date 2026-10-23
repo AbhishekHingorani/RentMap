@@ -1,0 +1,1 @@
+{"action": "create", "reason": "Adding, removing, or re-typing one field or control in the rental map touched about ten places across lib, page, CSS, tests, package.json, and SPEC. A future session should start from the full list, not rediscover it. The rule is to change every layer in one pass and then grep the old name.", "evidence": "references/evidence-4c68119c.md"}
