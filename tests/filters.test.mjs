@@ -18,7 +18,6 @@ test("filters start at the Budget, every Configuration ticked, both switches off
   assert.deepEqual([...filters.configurations].sort(), [...CONFIGURATIONS].sort());
   assert.deepEqual(CONFIGURATIONS, ["1RK", "1BHK", "2BHK", "3BHK", "4BHK+"]);
   assert.equal(filters.shortlistedOnly, false);
-  assert.equal(filters.showRejected, false);
   assert.equal(filters.search, "");
 });
 
@@ -60,15 +59,19 @@ test("a listing with no Configuration stays in, because there is nothing to chec
   assert.equal(passes({ Configuration: "" }, { configurations: new Set(["1BHK"]) }), true);
 });
 
-test("Shortlisted only keeps only Shortlisted listings", () => {
+test("Shortlisted only keeps only listings with the Shortlisted box ticked", () => {
   assert.equal(passes({ Status: "Visited" }, { shortlistedOnly: true }), false);
-  assert.equal(passes({ Status: "Shortlisted" }, { shortlistedOnly: true }), true);
+  assert.equal(passes({ Status: "Visited", Shortlisted: false }, { shortlistedOnly: true }), false);
+  assert.equal(passes({ Status: "Visited", Shortlisted: true }, { shortlistedOnly: true }), true);
   assert.equal(passes({ Status: "Visited" }), true);
 });
 
-test("Rejected listings stay hidden until Show rejected is on", () => {
-  assert.equal(passes({ Status: "Rejected" }), false);
-  assert.equal(passes({ Status: "Rejected" }, { showRejected: true }), true);
+test("an old Shortlisted Status with no ticked box is not shortlisted", () => {
+  assert.equal(passes({ Status: "Shortlisted" }, { shortlistedOnly: true }), false);
+});
+
+test("the app does not use Status, so a Rejected listing still shows", () => {
+  assert.equal(passes({ Status: "Rejected" }), true);
 });
 
 test("Search matches Society / building name and Locality, and case does not matter", () => {
@@ -88,6 +91,5 @@ test("Over budget means the total is above the Budget", () => {
 });
 
 test("a hand-typed Status still counts, whatever its case", () => {
-  assert.equal(passes({ Status: "rejected " }), false);
-  assert.equal(passes({ Status: "shortlisted" }, { shortlistedOnly: true }), true);
+  assert.equal(passes({ Shortlisted: "TRUE" }, { shortlistedOnly: true }), true);
 });

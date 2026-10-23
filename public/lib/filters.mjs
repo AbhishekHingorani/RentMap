@@ -16,7 +16,6 @@ export function startFilters(budget) {
     maxCost: budget,
     configurations: new Set(CONFIGURATIONS),
     shortlistedOnly: false,
-    showRejected: false,
     search: "",
   };
 }
@@ -31,10 +30,9 @@ function costToCheck(listing) {
 function sameWord(text) {
   return text.toUpperCase().replace(/\s+/g, "");
 }
-const SHORTLISTED = sameWord("Shortlisted");
 const REJECTED = sameWord("Rejected");
 
-// A hand-typed "rejected " is Rejected too. The map hides these until "Show rejected" is on.
+// A hand-typed "rejected " is Rejected too. The app no longer shows Status, but the add steps still name it.
 export function isRejected(listing) {
   return sameWord(listing.status) === REJECTED;
 }
@@ -47,9 +45,7 @@ function passes(listing, filters, search) {
   const key = sameWord(listing.configuration);
   if (CONFIGURATIONS.includes(key) && !filters.configurations.has(key)) return false;
 
-  const status = sameWord(listing.status);
-  if (filters.shortlistedOnly && status !== SHORTLISTED) return false;
-  if (!filters.showRejected && isRejected(listing)) return false;
+  if (filters.shortlistedOnly && !listing.shortlisted) return false;
 
   if (search) {
     const text = `${listing.society}\n${listing.locality}`.toLowerCase();

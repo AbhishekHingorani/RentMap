@@ -6,7 +6,7 @@ Some questions are still open. They are listed in [Known gaps](#known-gaps). The
 
 ## What the app does
 
-A small group hunting for one rental home puts every listing they look at on one map. Each person can add listings, rate them, write notes and change their Status. All data lives in one Google Sheet that the group shares. Photos live in one shared Google Drive folder.
+A small group hunting for one rental home puts every listing they look at on one map. Each person can add listings, rate them, write notes and shortlist them. All data lives in one Google Sheet that the group shares. Photos live in one shared Google Drive folder.
 
 ## Parts
 
@@ -37,7 +37,7 @@ One row per listing.
 | 2 | Society / building name | text | Claude |
 | 3 | Locality | text | Claude |
 | 4 | Configuration | 1RK, 1BHK, 2BHK, 3BHK, 4BHK+ | Claude |
-| 5 | Status | To call, Visit scheduled, Visited, Shortlisted, Rejected | person; a new listing starts as To call |
+| 5 | Status | To call, Visit scheduled, Visited, Rejected | app writes To call on add; the app does not show or change it |
 | 6 | Listed by | Owner, Dealer | Claude |
 | 7 | Broker name | text | Claude |
 | 8 | Broker phone | text | person (sites hide phone numbers) |
@@ -73,8 +73,13 @@ One row per listing.
 | 38 | Pin precision | building, society, locality | app |
 | 39 | Date added | date | app |
 | 40 | Added by | text | app |
+| 41 | Shortlisted | tick box: true or false | person |
+| 42 | Dimple's rating | 0 to 10, steps of 0.5 | person; not part of Overall rating |
+| 43 | Abhishek's rating | 0 to 10, steps of 0.5 | person; not part of Overall rating |
 
-Claude never fills the 5 ratings.
+Claude never fills the 5 ratings or the 2 person ratings.
+
+Columns 41 to 43 came after the sheet was first set up. Run `setup` again to add them to an old sheet. It also ticks Shortlisted on each row whose Status says Shortlisted, since that used to be a Status.
 
 ### Places tab
 
@@ -126,14 +131,17 @@ All design work uses Impeccable, installed in `.claude/skills/impeccable`. Lapto
 - Above the left column: a "+ Add listing" button.
 - Left column tabs: Listings (filter bar, then the list) and Places (the place list and an "add a place" form).
 - The list shows the listings the filters let through. It is sorted by Total monthly cost, lowest first. A listing with no rent goes last.
-- Each card shows: a photo, society, Status, locality, total cost, Configuration, Overall rating, and the straight-line distance to each place.
+- Each card shows: a photo, society, locality, total cost, Configuration, both ratings, and the straight-line distance to each place.
+- Total cost text runs from green for the cheapest of all listings to red for the dearest. The card and the details header use it.
+- Both ratings show as "Ours 8.5 / 10 · Others 3.6 / 5". Ours is the average of Dimple's and Abhishek's filled ratings. Others is Overall rating.
+- **Sort by:** a dropdown under the filters. Price low to high (the start choice), area big to small, BHK small to big, our rating high to low, other ratings high to low, locality A to Z, and distance from each place near to far. Area is Carpet area, or Super built-up area when Carpet area is empty. Listings with no value go last.
 - Money is in rupees with Indian digit groups, like ₹1,17,000.
 - A value the listing does not show reads "not given".
 - Show "© OpenStreetMap contributors" on the map.
 
 ### Pins
 
-- Each listing pin shows total cost and Configuration, like "₹38k · 2BHK". Its color shows the Status.
+- Each listing pin shows total cost and Configuration, like "₹38k · 2BHK". A shortlisted pin is green and sits above the others. Every other pin is blue.
 - Each place shows as a black ★ with its name.
 - When a picked listing's Pin precision is society or locality, a dashed circle shows around its pin. The circle has a radius of 250 m for society and 1500 m for locality. These sizes are a builder's guess.
 
@@ -141,13 +149,13 @@ All design work uses Impeccable, installed in `.claude/skills/impeccable`. Lapto
 
 A click on a card or a pin opens the details in the left column, with a "Back to the list" link.
 
-Header: society, locality, Status, total cost, an "Over budget" tag when the total is above the Budget, Configuration, Overall rating, and a link to the listing page.
+Header: society, locality, total cost, an "Over budget" tag when the total is above the Budget, Configuration, both ratings, and a link to the listing page. Under the distances: the Shortlisted tick box and a 0 to 10 number box for each person's rating.
 
 Tabs:
 - **Overview:** photos and photo upload, money, flat details, distance to each place.
-- **Our take:** Status, the 5 ratings, pros, cons, notes.
+- **Our take:** the 5 ratings, pros, cons, notes.
 - **Contacts:** Listed by, broker name, broker phone, owner name, owner phone.
-- **All 40 fields:** every Tracker column with its number, an "Edit" button, and a "Move pin" button.
+- **All 43 fields:** every Tracker column with its number, an "Edit" button, and a "Move pin" button.
 
 If a person saves a listing that their filters hide, its details show a yellow note: "Your filters hide this listing on the map." The filters do not change.
 
@@ -158,7 +166,6 @@ Source: [Pick the map filters](.scratch/rental-map/issues/13-map-filters.md).
 - **Max ₹/month:** one number box. It checks Total monthly cost. If Maintenance is empty, it checks Rent alone. A listing with no Rent passes. The box starts at the Budget from the Settings tab. Changing the box does not change the sheet.
 - **Configuration:** one checkbox each for 1RK, 1BHK, 2BHK, 3BHK, 4BHK+. All are ticked at start. A listing with no Configuration, or one that is not one of the 5, has nothing to check, so it passes.
 - **Shortlisted only:** a switch, off at start.
-- **Show rejected:** a switch, off at start. Rejected listings are hidden until it is on.
 - **Search:** one box. It matches Society / building name and Locality. Case does not matter.
 - A filtered-out pin disappears from the map. Places always show.
 - The filter bar shows "N of M listings shown".
@@ -280,17 +287,18 @@ Source: [Spot a listing added twice](.scratch/rental-map/issues/14-same-listing-
 
 Source: [Decide how to edit and delete a saved listing](.scratch/rental-map/issues/15-edit-delete-listing.md).
 
-- **Edit button.** On the "All 40 fields" tab, "Edit" makes the Claude-filled fields editable. "Save" writes them.
+- **Edit button.** On the "All 43 fields" tab, "Edit" makes the Claude-filled fields editable. "Save" writes them.
 - **Locked in the Edit form:** Listing id, Listing link, Total monthly cost, Overall rating, Date added, Added by, Lat, Long, Pin precision.
 - **Move pin.** Dragging the pin changes Lat and Long. An edit to Locality or Society does not move the pin.
-- **Our take.** Status and each of the 5 ratings save at once on one click. That tab has no Save button.
+- **Above the tabs.** Under the distances: a Shortlisted tick box, and a 0 to 10 number box for each person's rating. The tick box saves on click. A number box saves on Enter or when it loses focus. An empty box clears the cell.
+- **Our take.** Each of the 5 ratings saves at once on one click. That tab has no Save button.
 - **Lists.** A "×" removes one photo link, one pro or one con. A photo file in Drive stays in Drive.
 - **Notes.** Anyone can add a note. Each note has a "×" with a "Delete this note?" box. Anyone can delete any note. Nobody can edit a note.
-- **No delete.** There is no Delete button. To remove a listing, a person sets its Status to Rejected. The sheet owner can still delete a row by hand in the sheet.
+- **No delete.** There is no Delete button. The sheet owner can delete a row by hand in the sheet.
 
-- **Built (ticket 09).** The page code is `public/lib/edit-listing.mjs` and the "All 40 fields" tab in `public/app.mjs`. Both use the `saveCells` action.
+- **Built (ticket 09).** The page code is `public/lib/edit-listing.mjs` and the "All 43 fields" tab in `public/app.mjs`. Both use the `saveCells` action.
   - The Edit form makes 21 cells editable: the Claude-filled cells except Photos, and Broker phone, Owner name and Owner phone. A person fills those 3 by hand, and no other part of the app can change them.
-  - Status, the 5 ratings, Pros, Cons and Notes stay on the Our take tab. The form shows them with "Change it on the Our take tab". Photos shows "Change it on the Overview tab".
+  - Shortlisted and the 2 person ratings show "Change it above the tabs". Status shows "The app does not use this". The 5 ratings, Pros, Cons and Notes show "Change it on the Our take tab". Photos shows "Change it on the Overview tab".
   - Save fixes a value in the wrong format, like the review form does, and refuses one it cannot fix. A box the person did not touch is not sent, even when the sheet holds it in another format, like "3,000".
   - After a clash, a box the person did not touch shows the sheet value now.
   - A dropped pin also sets Pin precision to building, because the person put the pin on the home. The dashed circle goes away.
@@ -314,7 +322,7 @@ Example: Asha changes Rent to ₹40,000. Ravi opened the same listing 10 minutes
 - **Built (ticket 08).** The page code is `public/lib/our-take.mjs` and the Our take tab in `public/app.mjs`. The Apps Script actions are `getListing`, `saveCells` and `editList`.
   - `saveCells` takes `cells: [{ column, old, new }]`. A clash replies `{ "ok": false, "error": "clash", "clashes": [<columns>], "listing": <sheet row> }`. A gone row replies `{ "ok": false, "error": "row_gone" }`.
   - The clash check compares cells as trimmed text. A date cell compares as the ISO text that `load` sends.
-  - `saveCells` refuses Listing id, Total monthly cost, Overall rating and the 4 list cells. It refuses a Status outside the 5, and a rating that is not a whole number from 1 to 5 or empty.
+  - `saveCells` refuses Listing id, Total monthly cost, Overall rating and the 4 list cells. It refuses a Status outside the 4, a Shortlisted value that is not true or false, a rating that is not a whole number from 1 to 5 or empty, and a person rating that is not 0 to 10 in steps of 0.5 or empty.
   - `editList` takes Pros and Cons. An item cannot hold a ";". It refuses Notes until the owner decides how notes are split. It takes Photos too, from ticket 10.
   - `saveCells` refuses a call that sends the same column twice.
   - A click on the picked rating clears it.

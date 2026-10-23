@@ -26,7 +26,7 @@ A person pastes a listing link. Claude (on the web, or the person's own Claude C
 
 - A person finds a listing on 99acres or housing.com, copies its link, and adds it in the app. If Claude cannot read the page, a bookmarklet copies the page data instead.
 - The group calls owners and brokers, books visits, and rates each home after a visit.
-- Each listing moves through one Status: To call, Visit scheduled, Visited, Shortlisted, Rejected.
+- A listing can be shortlisted with a tick box. The sheet still has a Status column, but the app does not show it.
 - The group sets important places, like an office or a school. The app shows the straight-line distance from each listing to each place.
 
 ## Capabilities and Constraints

@@ -42,6 +42,9 @@ export const TRACKER_COLUMNS = [
   "Pin precision",
   "Date added",
   "Added by",
+  "Shortlisted",
+  "Dimple's rating",
+  "Abhishek's rating",
 ];
 
 export const PLACES_COLUMNS = ["Name", "Address", "Lat", "Long", "Pin precision", "Added by"];
@@ -50,4 +53,8 @@ export const SETTINGS_COLUMNS = ["Setting", "Value"];
 
 export const CONFIGURATIONS = ["1RK", "1BHK", "2BHK", "3BHK", "4BHK+"];
 
-export const STATUSES = ["To call", "Visit scheduled", "Visited", "Shortlisted", "Rejected"];
+// Shortlisted is its own column, a tick box, so a listing can be Visited and shortlisted at once.
+export const STATUSES = ["To call", "Visit scheduled", "Visited", "Rejected"];
+
+// Each person's own rating, 1 to 5. They do not count toward Overall rating.
+export const PERSON_RATING_COLUMNS = ["Dimple's rating", "Abhishek's rating"];

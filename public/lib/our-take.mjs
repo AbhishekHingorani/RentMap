@@ -36,6 +36,19 @@ export function ratingValue(value) {
   return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null;
 }
 
+// Dimple's and Abhishek's ratings: 0 to 10 in steps of 0.5. Code.gs checks the same rule.
+export const PERSON_RATING_MAX = 10;
+export const PERSON_RATING_STEP = 0.5;
+
+// The typed box as the value to save: a number, or "" for an empty box. null when it breaks the rule.
+export function personRatingFrom(text) {
+  const trimmed = toText(text);
+  if (trimmed === "") return "";
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0 || n > PERSON_RATING_MAX || !Number.isInteger(n / PERSON_RATING_STEP)) return null;
+  return n;
+}
+
 // Apps Script cannot import, so Code.gs copies addItem and removeItem. tests/apps-script.test.mjs checks they agree.
 export function addItem(cell, item) {
   return [...splitItems(cell), item.trim()].join("; ");

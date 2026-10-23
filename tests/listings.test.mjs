@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  costRange,
+  formatOurRating,
   formatRupees,
+  ratingsText,
+  furnishingKind,
+  isTicked,
+  listingSource,
   pinLabel,
   listingsFromRows,
   sortByCost,
@@ -66,4 +72,51 @@ test("photo is the first link in the Photos cell", () => {
 test("Settings rows become a name to value map", () => {
   const settings = settingsFromRows([{ Setting: "Budget (₹/month)", Value: 45000 }]);
   assert.equal(settings["Budget (₹/month)"], 45000);
+});
+
+test("the source of a listing is the site in its link", () => {
+  assert.equal(listingSource("https://www.99acres.com/x-spid-M93900012").key, "99acres");
+  assert.equal(listingSource("https://housing.com/rent/21267780-flat").label, "Housing.com");
+  assert.deepEqual(listingSource("https://www.nobroker.in/property/1"), { key: "other", label: "nobroker.in" });
+  assert.equal(listingSource("https://not99acres.com/x").key, "other");
+  assert.equal(listingSource(""), null);
+  assert.equal(listingSource("javascript:alert(1)"), null);
+});
+
+test("furnishing reads as full, semi or none, hand-typed ones too", () => {
+  assert.equal(furnishingKind("Fully furnished"), "full");
+  assert.equal(furnishingKind("Furnished"), "full");
+  assert.equal(furnishingKind("Semi-furnished"), "semi");
+  assert.equal(furnishingKind("semi furnished"), "semi");
+  assert.equal(furnishingKind("Unfurnished"), "none");
+  assert.equal(furnishingKind(""), null);
+  assert.equal(furnishingKind("ask owner"), null);
+});
+
+test("the Shortlisted box reads a sheet boolean, or a hand-typed yes or TRUE", () => {
+  assert.equal(isTicked(true), true);
+  assert.equal(isTicked(false), false);
+  assert.equal(isTicked("TRUE"), true);
+  assert.equal(isTicked(" yes "), true);
+  assert.equal(isTicked(""), false);
+  assert.equal(isTicked("FALSE"), false);
+  assert.equal(listingsFromRows([{ Shortlisted: true }])[0].shortlisted, true);
+  assert.equal(listingsFromRows([{ Status: "Shortlisted" }])[0].shortlisted, false);
+});
+
+test("our rating is the average of Dimple's and Abhishek's filled ratings, out of 10", () => {
+  const [both] = listingsFromRows([{ "Dimple's rating": 7.5, "Abhishek's rating": "9" }]);
+  assert.equal(both.ourRating, 8.25);
+  assert.equal(formatOurRating(both.ourRating), "8.25 / 10");
+  const [one] = listingsFromRows([{ "Dimple's rating": 0 }]);
+  assert.equal(one.ourRating, 0);
+  const [none] = listingsFromRows([{ "Overall rating": 3.4 }]);
+  assert.equal(none.ourRating, null);
+  assert.equal(ratingsText(none), "Ours not given · Others 3.4 / 5");
+});
+
+test("the cost range spans every listing with a cost", () => {
+  const listings = listingsFromRows([{ "Total monthly cost": 30000 }, { "Total monthly cost": 52000 }, {}]);
+  assert.deepEqual(costRange(listings), { min: 30000, max: 52000 });
+  assert.equal(costRange(listingsFromRows([{}])), null);
 });

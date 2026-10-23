@@ -44,6 +44,9 @@ var TRACKER_COLUMNS = [
   "Pin precision",
   "Date added",
   "Added by",
+  "Shortlisted",
+  "Dimple's rating",
+  "Abhishek's rating",
 ];
 var PLACES_COLUMNS = ["Name", "Address", "Lat", "Long", "Pin precision", "Added by"];
 var SETTINGS_COLUMNS = ["Setting", "Value"];
@@ -61,7 +64,12 @@ var RATING_COLUMNS = ["Safety", "Water supply", "Location", "Condition", "Natura
 // The script works these out from the other cells. The page never writes them.
 var WORKED_OUT_COLUMNS = ["Total monthly cost", "Overall rating"];
 // public/lib/columns.mjs has the same list. tests/apps-script.test.mjs checks that they match.
-var STATUSES = ["To call", "Visit scheduled", "Visited", "Shortlisted", "Rejected"];
+var STATUSES = ["To call", "Visit scheduled", "Visited", "Rejected"];
+// A tick box. The app writes true or false.
+var SHORTLISTED_COLUMN = "Shortlisted";
+// Each person's own rating, 0 to 10 in steps of 0.5. They do not count toward Overall rating.
+// public/lib/columns.mjs has the same list, and public/lib/our-take.mjs has the same rule.
+var PERSON_RATING_COLUMNS = ["Dimple's rating", "Abhishek's rating"];
 // These cells hold items split by ";". A save changes them one item at a time, with editList, so they never clash.
 var LIST_COLUMNS = ["Pros", "Cons", "Notes", "Photos"];
 // editList takes these. Notes wait for the owner to decide how notes are split. See "Known gaps" in SPEC.md.
@@ -81,11 +89,13 @@ var SPOT_RANGES = { Lat: 90, Long: 180 };
 var LOCK_WAIT_MS = 20000;
 
 // Run this once from the Apps Script editor. It adds any missing tab and writes its headers.
-// A tab that already has rows is left alone, except that Settings gets any setting row it lacks.
-// So run setup again after a new setting is added here.
+// A tab that already has rows is left alone, except that Settings gets any setting row it lacks,
+// and Tracker gets any column it lacks, at the end of row 1.
+// So run setup again after a new setting or column is added here.
 function setup() {
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   makeTab(spreadsheet, "Tracker", [TRACKER_COLUMNS]);
+  addMissingColumns(spreadsheet.getSheetByName("Tracker"));
   makeTab(spreadsheet, "Places", [PLACES_COLUMNS]);
   makeTab(spreadsheet, "Settings", [SETTINGS_COLUMNS].concat(SETTINGS_ROWS));
   addMissingSettings(spreadsheet.getSheetByName("Settings"));
@@ -106,6 +116,25 @@ function photosFolderRow(values) {
     if (String(values[r][0]).trim() === PHOTOS_FOLDER_SETTING) return r;
   }
   return -1;
+}
+
+// Shortlisted used to be a Status. When the Shortlisted column is new, each row whose Status says
+// Shortlisted gets its box ticked. Its Status stays, and the app asks the person to pick a new one.
+function addMissingColumns(sheet) {
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0] || [];
+  var missing = TRACKER_COLUMNS.filter(function (column) {
+    return headers.indexOf(column) === -1;
+  });
+  if (!missing.length) return;
+  var first = headers.length + 1;
+  sheet.getRange(1, first, 1, missing.length).setValues([missing]);
+  var at = missing.indexOf(SHORTLISTED_COLUMN);
+  var status = headers.indexOf("Status");
+  if (at === -1 || status === -1) return;
+  for (var r = 1; r < values.length; r++) {
+    if (sameText(values[r][status], "Shortlisted")) sheet.getRange(r + 1, first + at, 1, 1).setValues([[true]]);
+  }
 }
 
 // A row whose Setting cell already holds the name is kept, whatever its value.
@@ -380,13 +409,23 @@ function cellProblem(cell) {
   if (RATING_COLUMNS.indexOf(column) !== -1 && cell.new !== "" && ratingOf(cell.new) === null) {
     return column + " must be a whole number from 1 to 5, or empty.";
   }
+  if (PERSON_RATING_COLUMNS.indexOf(column) !== -1 && cell.new !== "" && personRatingOf(cell.new) === null) {
+    return column + " must be a number from 0 to 10 in steps of 0.5, or empty.";
+  }
+  if (column === SHORTLISTED_COLUMN && typeof cell.new !== "boolean") return "Shortlisted must be true or false.";
   return "";
 }
 
 // A rating goes into the sheet as a number, so Overall rating can read it.
 function cellValue(cell) {
   if (RATING_COLUMNS.indexOf(cell.column) !== -1) return cell.new === "" ? "" : ratingOf(cell.new);
+  if (PERSON_RATING_COLUMNS.indexOf(cell.column) !== -1) return cell.new === "" ? "" : personRatingOf(cell.new);
   return cell.new === null || cell.new === undefined ? "" : cell.new;
+}
+
+function personRatingOf(value) {
+  var n = toNumber(value);
+  return n !== null && n >= 0 && n <= 10 && n * 2 === Math.floor(n * 2) ? n : null;
 }
 
 function ratingOf(value) {

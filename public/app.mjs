@@ -5,21 +5,29 @@
 // When Claude web cannot read the page, the bookmarklet step reads it in the person's own browser.
 // A listing with no link, or one no Claude can read, goes in through the hand form.
 // A link already on the map blocks the add. The same society and Configuration only warns.
-// The Our take tab saves Status, ratings, pros and cons on each click. The Apps Script refuses a click on a stale cell.
-// The "All 40 fields" tab has the Edit form and Move pin. Both send the value the person saw, for the same clash check.
+// The row above the tabs saves Shortlisted and each person's 0 to 10 rating. The app does not show Status.
+// The Our take tab saves ratings, pros and cons the same way. The Apps Script refuses a click on a stale cell.
+// The "All fields" tab has the Edit form and Move pin. Both send the value the person saw, for the same clash check.
 // The Overview tab uploads photos to the shared Drive folder and adds each Drive link to the Photos cell.
 import {
   NOT_GIVEN,
+  costRange,
+  formatOurRating,
   formatRating,
   formatRupees,
+  furnishingKind,
+  listingSource,
   listingsFromRows,
   pinLabel,
+  ratingsText,
   settingsFromRows,
+  toNumber,
   sortByCost,
   toText,
 } from "/lib/listings.mjs";
-import { CONFIGURATIONS, STATUSES } from "/lib/columns.mjs";
-import { budgetFrom, filterListings, isOverBudget, isRejected, startFilters } from "/lib/filters.mjs";
+import { CONFIGURATIONS, PERSON_RATING_COLUMNS, TRACKER_COLUMNS } from "/lib/columns.mjs";
+import { budgetFrom, filterListings, isOverBudget, startFilters } from "/lib/filters.mjs";
+import { DEFAULT_SORT, sortChoices, sortListings } from "/lib/sort.mjs";
 import {
   CLASH,
   ITEM_COLUMNS,
@@ -27,6 +35,9 @@ import {
   cellChange,
   itemName,
   itemProblem,
+  PERSON_RATING_MAX,
+  PERSON_RATING_STEP,
+  personRatingFrom,
   ratingAfterClick,
   ratingValue,
   refusalMessage,
@@ -46,7 +57,19 @@ import {
   itemsOf,
   photoLinks,
 } from "/lib/details.mjs";
-import { cityFrom, coloredDistances, coordinatesText, distanceRanges, editPlaceBody, editedPlaceIn, parseCoordinates, placesFromRows, spotPlan } from "/lib/places.mjs";
+import {
+  cityFrom,
+  coloredDistances,
+  coordinatesText,
+  distanceHue,
+  distanceRanges,
+  distanceShare,
+  editPlaceBody,
+  editedPlaceIn,
+  parseCoordinates,
+  placesFromRows,
+  spotPlan,
+} from "/lib/places.mjs";
 import {
   PHOTO_COLUMN,
   PHOTO_QUALITY,
@@ -62,6 +85,8 @@ import {
 import {
   EDIT_COLUMNS,
   LOCKED_COLUMNS,
+  TOP_TAKE_COLUMNS,
+  UNUSED_COLUMNS,
   PIN_CLASH_MESSAGE,
   applyClash,
   editCells,
@@ -208,6 +233,8 @@ const state = {
   city: "",
   budget: null,
   filters: startFilters(null),
+  // The Sort by choice. It lives in memory only, like the filters.
+  sort: DEFAULT_SORT,
   pickedId: null,
   // The open listing details. null when they are closed. See freshDetail.
   detail: null,
@@ -219,10 +246,6 @@ const state = {
   add: null,
 };
 
-function statusKey(status) {
-  return STATUSES.includes(status) ? status.toLowerCase().replace(/\s+/g, "-") : "unknown";
-}
-
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -230,8 +253,32 @@ function el(tag, className, text) {
   return node;
 }
 
-function statusTag(status) {
-  return el("span", `status status--${statusKey(status)}`, status || NOT_GIVEN);
+// The total cost, coloured from green for the cheapest of all listings to red for the dearest.
+function costText(className, listing, ...after) {
+  const cost = el("p", className);
+  if (listing.totalCost === null) {
+    cost.textContent = `Total ${NOT_GIVEN}`;
+    return cost;
+  }
+  cost.classList.add("cost-hued");
+  cost.style.setProperty("--hue", distanceHue(distanceShare(listing.totalCost, costRange(state.listings))));
+  cost.append(formatRupees(listing.totalCost), ...after);
+  return cost;
+}
+
+// The site the listing came from, as a small outlined tag. A listing with no link gets none.
+function sourceTag(listing) {
+  const source = listingSource(listing.link);
+  if (!source) return null;
+  const tag = el("span", `source source--${source.key}`, source.label);
+  tag.title = `Listing from ${source.label}`;
+  return tag;
+}
+
+// The furnishing class for its colour: full is dark, semi is amber, none is plain.
+function furnishingClass(listing) {
+  const kind = furnishingKind(listing.row.Furnishing);
+  return kind ? `furnish--${kind}` : "";
 }
 
 // A Drive photo shows through the thumbnail URL. If that fails, the Apps Script sends the photo.
@@ -273,6 +320,7 @@ const ICONS = {
   sofa: '<path d="M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3"/><path d="M2 16a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v1.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V11a2 2 0 0 0-4 0z"/><path d="M4 18v2M20 18v2"/>',
   floor: '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12.65l9.17 4.16a2 2 0 0 0 1.66 0L22 12.65"/><path d="M2 17.65l9.17 4.16a2 2 0 0 0 1.66 0L22 17.65"/>',
   balcony: '<path d="M3 10h18"/><path d="M3 21h18"/><path d="M5 10v11M9.5 10v11M14.5 10v11M19 10v11"/><path d="M7 10V5a5 5 0 0 1 10 0v5"/>',
+  external: '<path d="M15 3h6v6"/><path d="M10 14L21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
   pin: '<path d="M20 10c0 4.99-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 14.99 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
 };
 
@@ -424,18 +472,27 @@ function card(listing) {
 
   const body = el("div", "card-body");
   const top = el("div", "card-top");
-  top.append(society, statusTag(listing.status));
+  top.append(society);
   const facts = el("p", "card-facts");
   facts.append(
     el("span", "card-config", listing.configuration || NOT_GIVEN),
-    el("span", "card-rating", `Rating ${formatRating(listing.overallRating)}`),
+    el("span", "card-rating", ratingsText(listing)),
   );
   body.append(
     top,
     el("p", "card-locality", listing.locality || NOT_GIVEN),
-    el("p", "card-cost", listing.totalCost === null ? `Total ${NOT_GIVEN}` : `${formatRupees(listing.totalCost)} a month`),
+    costText("card-cost", listing, " a month"),
     facts,
   );
+  // Furnishing and the site the listing came from, as small tags.
+  const tags = el("p", "card-tags");
+  if (listing.shortlisted) tags.append(el("span", "status status--shortlisted", "Shortlisted"));
+  const furnishing = toText(listing.row.Furnishing);
+  if (furnishing) tags.append(el("span", `furnish ${furnishingClass(listing)}`, furnishing));
+  const source = sourceTag(listing);
+  if (source) tags.append(source);
+  if (tags.childElementCount) body.append(tags);
+
   if (!listing.spot) body.append(el("p", "card-note", "No map spot yet"));
   else if (state.places.length) body.append(distanceList(listing, "card-distances"));
 
@@ -475,40 +532,52 @@ function distanceList(listing, className) {
   return list;
 }
 
-// The facts that settle most choices, at the top of the details: furnishing, floor, balconies and distances.
+// The facts that settle most choices, at the top of the details. One row holds furnishing, floor and
+// balconies. The next holds the distance to each place, or is null when there are none.
 function highlights(listing) {
-  const list = el("ul", "highlights");
-  list.setAttribute("aria-label", "Key facts");
-  const chip = (iconName, text, kind, title) => {
+  const chipList = (label) => {
+    const list = el("ul", "highlights");
+    list.setAttribute("aria-label", label);
+    return list;
+  };
+  const chip = (list, iconName, text, kind, title) => {
     const item = el("li", `highlight${kind ? ` highlight--${kind}` : ""}`);
     if (title) item.title = title;
     item.append(icon(iconName, 16), el("span", "", text));
     list.append(item);
     return item;
   };
+  const facts = chipList("Key facts");
   const furnishing = toText(listing.row.Furnishing);
-  chip("sofa", furnishing || `Furnishing ${NOT_GIVEN}`, furnishing ? "" : "missing");
-  chip("floor", floorText(listing), toText(listing.row["Floor / total floors"]) ? "" : "missing");
+  const furnish = chip(facts, "sofa", furnishing || `Furnishing ${NOT_GIVEN}`, furnishing ? "" : "missing");
+  if (furnishingClass(listing)) furnish.classList.add(furnishingClass(listing));
+  chip(facts, "floor", floorText(listing), toText(listing.row["Floor / total floors"]) ? "" : "missing");
   const balconies = balconiesOf(listing);
-  chip("balcony", balconyText(balconies), balconies === null ? "missing" : balconies > 0 ? "yes" : "no");
+  chip(facts, "balcony", balconyText(balconies), balconies === null ? "missing" : balconies > 0 ? "yes" : "no");
+
   const ranges = distanceRanges(state.listings, state.places);
-  for (const distance of coloredDistances(listing, state.places, ranges)) {
-    const item = chip("pin", `${distance.name} ${distance.text}`, distance.hue === null ? "missing" : "distance", "Straight line. Green is the nearest of all listings, red the farthest.");
+  const found = coloredDistances(listing, state.places, ranges);
+  if (!found.length) return { facts, distances: null };
+  const distances = chipList("Distance to each place");
+  for (const distance of found) {
+    const item = chip(distances, "pin", `${distance.name} ${distance.text}`, distance.hue === null ? "missing" : "distance", "Straight line. Green is the nearest of all listings, red the farthest.");
     if (distance.hue !== null) item.style.setProperty("--hue", distance.hue);
   }
-  return list;
+  return { facts, distances };
 }
 
+// A ticked Shortlisted box makes the pin green. Every other pin is blue.
 function pinIcon(listing, picked) {
-  const label = el("span", `pin status--${statusKey(listing.status)}${picked ? " pin--picked" : ""}`, pinLabel(listing));
-  label.title = [listing.society, listing.status].filter(Boolean).join(" · ");
+  const key = listing.shortlisted ? "shortlisted" : "to-call";
+  const label = el("span", `pin status--${key}${picked ? " pin--picked" : ""}`, pinLabel(listing));
+  label.title = [listing.society, listing.shortlisted ? "Shortlisted" : ""].filter(Boolean).join(" · ");
   return L.divIcon({ className: "pin-anchor", html: label.outerHTML, iconSize: null });
 }
 
-// The open listing's pin goes on top. Rejected pins come next, so "Show rejected" does not hide them under other pins.
+// The open listing's pin goes on top. Shortlisted pins come next, so blue pins do not hide them.
 function pinLayerOrder(listing, picked) {
   if (picked) return 1000;
-  return isRejected(listing) ? 500 : 0;
+  return listing.shortlisted ? 500 : 0;
 }
 
 function pin(listing) {
@@ -526,8 +595,24 @@ function pin(listing) {
 }
 
 // Shows the cards and pins that the filters let through.
+// The Sort by choices change when a place is added or renamed. A choice that is gone falls back to price.
+function fillSortChoices() {
+  const select = document.getElementById("sort-by");
+  const choices = sortChoices(state.places);
+  if (!choices.some((c) => c.value === state.sort)) state.sort = DEFAULT_SORT;
+  select.replaceChildren(
+    ...choices.map((choice) => {
+      const option = el("option", "", choice.label);
+      option.value = choice.value;
+      option.selected = choice.value === state.sort;
+      return option;
+    }),
+  );
+}
+
 function renderList() {
-  const shown = filterListings(state.listings, state.filters);
+  fillSortChoices();
+  const shown = sortListings(filterListings(state.listings, state.filters), state.sort, state.places);
   listEl.replaceChildren(...shown.map(card));
   pinLayer.clearLayers();
   state.markers.clear();
@@ -550,7 +635,7 @@ function setUpFilters() {
   const max = document.getElementById("filter-max");
   const search = document.getElementById("filter-search");
   const shortlisted = document.getElementById("filter-shortlisted");
-  const rejected = document.getElementById("filter-rejected");
+  const sort = document.getElementById("sort-by");
   const configs = document.getElementById("filter-configs");
 
   max.value = state.filters.maxCost === null ? "" : String(state.filters.maxCost);
@@ -574,9 +659,9 @@ function setUpFilters() {
       maxCost: Number.isFinite(cap) ? cap : null,
       configurations: new Set([...configs.querySelectorAll("input:checked")].map((box) => box.value)),
       shortlistedOnly: shortlisted.checked,
-      showRejected: rejected.checked,
       search: search.value,
     };
+    state.sort = sort.value;
     renderList();
   });
   filtersEl.hidden = false;
@@ -673,44 +758,94 @@ function takeButton(text, key, take, onClick) {
   return button;
 }
 
-function statusChoices(listing, take) {
+function shortlistBox(listing, take) {
+  const label = el("label", "take-shortlist");
+  const box = el("input");
+  box.type = "checkbox";
+  box.dataset.key = "shortlisted";
+  box.checked = listing.shortlisted;
+  box.disabled = !take.canSave;
+  box.addEventListener("change", () => {
+    if (state.detail?.busy) renderDetails();
+    else saveCell("Shortlisted", box.checked, "top");
+  });
+  label.append(box, el("span", "", "Shortlisted"));
+  return label;
+}
+
+// One person's rating: a number box from 0 to 10 in steps of 0.5. It saves when the box loses focus or on Enter.
+// An empty box clears the cell. A number that breaks the rule stays in the box with a message.
+function personRatingRow(listing, column, take, detail) {
+  const row = el("label", "take-rating");
+  const input = el("input", "take-number");
+  input.type = "number";
+  input.min = "0";
+  input.max = String(PERSON_RATING_MAX);
+  input.step = String(PERSON_RATING_STEP);
+  input.inputMode = "decimal";
+  input.placeholder = `0 to ${PERSON_RATING_MAX}`;
+  input.dataset.key = column;
+  input.disabled = !take.canSave;
+  input.readOnly = Boolean(take.busy);
+  const saved = toNumber(listing.row[column]);
+  input.value = detail.drafts[column] ?? (saved === null ? "" : String(saved));
+  input.addEventListener("change", () => {
+    if (state.detail?.busy) return;
+    const value = personRatingFrom(input.value);
+    if (value === null) {
+      detail.drafts[column] = input.value;
+      detail.message = { text: `${column} must be a number from 0 to ${PERSON_RATING_MAX} in steps of ${PERSON_RATING_STEP}.`, kind: "error", at: "top" };
+      renderDetails();
+      return;
+    }
+    delete detail.drafts[column];
+    if (value === (saved ?? "")) return renderDetails();
+    saveCell(column, value, "top");
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") input.blur();
+  });
+  row.append(el("span", "take-rating-name", column), input, el("span", "take-number-max", `/ ${PERSON_RATING_MAX}`));
+  return row;
+}
+
+// One rating row: the column name and 5 buttons. A click on the rating it has now clears it.
+function ratingRow(listing, column, take, at) {
+  const now = ratingValue(listing.row[column]);
+  const row = el("div", "take-rating");
+  const name = el("span", "take-rating-name", column);
+  name.id = `rating-${column.replace(/[^A-Za-z]+/g, "-").toLowerCase()}`;
   const group = el("div", "take-choices");
   group.setAttribute("role", "group");
-  group.setAttribute("aria-label", "Status");
-  for (const status of STATUSES) {
-    // A hand-typed "visited" in the sheet is Visited too.
-    const on = status.toLowerCase() === listing.status.toLowerCase();
-    const button = takeButton(status, `status-${status}`, take, () => {
-      if (!on) saveCell("Status", status);
-    });
-    button.setAttribute("aria-pressed", String(on));
-    if (on) button.classList.add(`status--${statusKey(status)}`);
+  group.setAttribute("aria-labelledby", name.id);
+  for (let n = 1; n <= 5; n++) {
+    const button = takeButton(String(n), `${column}-${n}`, take, () => saveCell(column, ratingAfterClick(now, n), at));
+    button.setAttribute("aria-pressed", String(n === now));
+    button.setAttribute("aria-label", `${n} of 5`);
+    if (n === now) button.title = "Click again to clear";
     group.append(button);
   }
-  return group;
+  row.append(name, group);
+  return row;
+}
+
+// The row between the distances and the tabs: Shortlisted and each person's own rating.
+function topTake(listing, detail) {
+  const take = takeState(listing, detail);
+  const wrap = el("section", "top-take");
+  wrap.setAttribute("aria-label", "Shortlist and our ratings");
+  const line = el("div", "top-take-line");
+  line.append(shortlistBox(listing, take));
+  const ratings = el("div", "take-ratings");
+  for (const column of PERSON_RATING_COLUMNS) ratings.append(personRatingRow(listing, column, take, detail));
+  wrap.append(line, ratings, messageLine(detail, "top"));
+  return wrap;
 }
 
 function ratingChoices(listing, take) {
   const list = el("div", "take-ratings");
-  for (const column of RATING_COLUMNS) {
-    const now = ratingValue(listing.row[column]);
-    const row = el("div", "take-rating");
-    const name = el("span", "take-rating-name", column);
-    name.id = `rating-${column.replace(/\s+/g, "-").toLowerCase()}`;
-    const group = el("div", "take-choices");
-    group.setAttribute("role", "group");
-    group.setAttribute("aria-labelledby", name.id);
-    for (let n = 1; n <= 5; n++) {
-      const button = takeButton(String(n), `${column}-${n}`, take, () => saveCell(column, ratingAfterClick(now, n)));
-      button.setAttribute("aria-pressed", String(n === now));
-      button.setAttribute("aria-label", `${n} of 5`);
-      if (n === now) button.title = "Click again to clear";
-      group.append(button);
-    }
-    row.append(name, group);
-    list.append(row);
-  }
-  list.append(el("p", "take-overall", `Overall rating ${formatRating(listing.overallRating)}`));
+  for (const column of RATING_COLUMNS) list.append(ratingRow(listing, column, take, "tab"));
+  list.append(el("p", "take-overall", `Average of these 5: ${formatRating(listing.overallRating)}`));
   return list;
 }
 
@@ -777,11 +912,13 @@ function takeState(listing, detail) {
 }
 
 // The line that says "Saving…", "Saved." or why a save was refused. detail.busy holds the text while a call is out.
-function messageLine(detail) {
+// at is "top" for the row above the tabs, or "tab". A save shows its line only where it was clicked.
+function messageLine(detail, at = "tab") {
   const message = el("p", "take-message");
   message.setAttribute("aria-live", "polite");
-  if (detail.busy) message.textContent = detail.busy;
-  else if (detail.message) {
+  if (detail.busy) {
+    if ((detail.busyAt ?? "tab") === at) message.textContent = detail.busy;
+  } else if (detail.message && (detail.message.at ?? "tab") === at) {
     message.textContent = detail.message.text;
     message.classList.add(`take-message--${detail.message.kind}`);
     if (detail.message.kind === "error") message.setAttribute("role", "alert");
@@ -798,7 +935,6 @@ function ourTakePanel(listing, detail) {
   if (notes.textContent === NOT_GIVEN) notes.classList.add("not-given");
   parts.push(
     message,
-    section("Status", statusChoices(listing, take)),
     section("Ratings", ratingChoices(listing, take)),
     section("Pros and cons", ...ITEM_COLUMNS.map((column) => itemEditor(listing, column, detail, take))),
     section("Notes", notes),
@@ -812,7 +948,7 @@ function contactsPanel(listing) {
   ];
 }
 
-// The table of all 40 columns. cell(field) gives the value cell. The Edit form puts boxes in some of them.
+// The table of all Tracker columns. cell(field) gives the value cell. The Edit form puts boxes in some of them.
 function fieldsTable(listing, cell) {
   const table = el("table", "all-fields");
   const head = el("thead");
@@ -882,6 +1018,8 @@ function editFormPanel(listing, detail, take) {
       const cell = plainCell(field);
       let why = "Change it on the Our take tab";
       if (LOCKED_COLUMNS.includes(field.column)) why = "Locked";
+      else if (TOP_TAKE_COLUMNS.includes(field.column)) why = "Change it above the tabs";
+      else if (UNUSED_COLUMNS.includes(field.column)) why = "The app does not use this";
       else if (field.column === PHOTO_COLUMN) why = "Change it on the Overview tab";
       cell.append(el("span", "edit-locked", why));
       return cell;
@@ -941,7 +1079,7 @@ const TABS = [
   { key: "overview", name: "Overview", panel: overviewPanel },
   { key: "our-take", name: "Our take", panel: ourTakePanel },
   { key: "contacts", name: "Contacts", panel: contactsPanel },
-  { key: "all-fields", name: "All 40 fields", panel: allFieldsPanel },
+  { key: "all-fields", name: `All ${TRACKER_COLUMNS.length} fields`, panel: allFieldsPanel },
 ];
 
 // The tab bar keeps the picked tab in detail.tab, so the details can draw again after a save.
@@ -1010,32 +1148,48 @@ function safeLink(link) {
   }
 }
 
+// The top of the details, from the user's sketch. Left: the society name, which links to the listing page,
+// the locality and the Configuration. Right: the money and the two ratings. Below: the key facts,
+// then the distances, each row under a rule.
 function detailsHeader(listing) {
   const header = el("header", "details-head");
-  const top = el("div", "details-top");
-  top.append(el("h2", "details-society", listing.society || NOT_GIVEN), statusTag(listing.status));
 
-  const cost = el("p", "details-cost", listing.totalCost === null ? `Total ${NOT_GIVEN}` : `${formatRupees(listing.totalCost)} a month`);
-  if (isOverBudget(listing, state.budget)) cost.append(el("span", "over-budget", "Over budget"));
-
-  const facts = el("p", "details-facts");
-  facts.append(
-    el("span", "card-config", listing.configuration || NOT_GIVEN),
-    el("span", "", `Rating ${formatRating(listing.overallRating)}`),
-  );
-
+  const name = el("h2", "details-society");
   const href = safeLink(listing.link);
-  let link;
   if (href) {
-    link = el("a", "details-link", "Open the listing page");
+    const link = el("a", "details-name-link", listing.society || NOT_GIVEN);
     link.href = href;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
+    link.title = "Open the listing page in a new tab";
+    link.append(icon("external", 15));
+    name.append(link);
   } else {
-    link = el("p", "details-link not-given", `Listing page ${NOT_GIVEN}`);
+    name.textContent = listing.society || NOT_GIVEN;
+  }
+  const kind = el("p", "details-kind");
+  kind.append(el("span", "details-config", listing.configuration || NOT_GIVEN));
+  const source = sourceTag(listing);
+  if (source) kind.append(source);
+  else kind.append(el("span", "not-given", `Listing page ${NOT_GIVEN}`));
+  const who = el("div", "details-who");
+  who.append(name, el("p", "details-locality", listing.locality || NOT_GIVEN), kind);
+
+  const money = el("div", "details-money");
+  money.append(costText("details-cost", listing, el("span", "details-per", "a month")));
+  if (isOverBudget(listing, state.budget)) money.append(el("span", "over-budget", "Over budget"));
+  // Each rating is as big as the price, with a small name before it.
+  for (const [name, text] of [["Ours", formatOurRating(listing.ourRating)], ["Others", formatRating(listing.overallRating)]]) {
+    const rating = el("p", "details-rating");
+    rating.append(el("span", "details-rating-name", name), el("span", text === NOT_GIVEN ? "not-given" : "", text));
+    money.append(rating);
   }
 
-  header.append(top, el("p", "details-locality", listing.locality || NOT_GIVEN), cost, facts, highlights(listing), link);
+  const top = el("div", "details-top");
+  top.append(who, money);
+  const { facts, distances } = highlights(listing);
+  header.append(top, facts);
+  if (distances) header.append(distances);
   return header;
 }
 
@@ -1122,7 +1276,7 @@ function renderDetails() {
     gone.setAttribute("role", "alert");
     detailsEl.replaceChildren(gone);
   } else {
-    const parts = [detailsHeader(listing)];
+    const parts = [detailsHeader(listing), topTake(listing, detail)];
     if (detail.notice) {
       const notice = el("p", "add-error", detail.notice);
       notice.setAttribute("role", "status");
@@ -1178,18 +1332,20 @@ async function readListingAgain(detail) {
   }
 }
 
-// One click on the Our take tab: Status or one rating. It sends the value the person saw as the old value.
-function saveCell(column, value) {
+// One click above the tabs or on the Our take tab. It sends the value the person saw as the old value.
+// at says which message line shows the result: "top" or "tab".
+function saveCell(column, value, at = "tab") {
   const listing = listingById(state.detail.id);
-  sendEdit({ action: "saveCells", id: listing.row["Listing id"], cells: [cellChange(listing, column, value)] });
+  sendEdit({ action: "saveCells", id: listing.row["Listing id"], cells: [cellChange(listing, column, value)] }, () => {}, state.detail, at);
 }
 
 // Sends one save. A refused save shows the sheet values and a message. The app does not try again.
 // done runs after a save that worked. Returns the reply, or null when the call failed or the row is gone.
 // detail is the details view that started the save. It may be closed by the time the save goes out.
-async function sendEdit(body, done = () => {}, detail = state.detail) {
+// at says which message line shows the result: "top" for the row above the tabs, or "tab".
+async function sendEdit(body, done = () => {}, detail = state.detail, at = "tab") {
   state.saves++;
-  Object.assign(detail, { busy: "Saving…", message: null });
+  Object.assign(detail, { busy: "Saving…", busyAt: at, message: null });
   if (state.detail === detail) renderDetails();
   let reply;
   let failed = "";
@@ -1199,21 +1355,22 @@ async function sendEdit(body, done = () => {}, detail = state.detail) {
     failed = err.message;
   }
   detail.busy = false;
+  detail.busyAt = undefined;
   if (failed) {
     // The write may have worked before the call failed. The row read again shows what the sheet holds.
-    detail.message = { text: `${failed} Your change may not be saved. The app reads the listing again.`, kind: "error" };
+    detail.message = { text: `${failed} Your change may not be saved. The app reads the listing again.`, kind: "error", at };
     if (state.detail === detail) renderDetails();
     readListingAgain(detail);
     return null;
   }
   if (reply.ok) {
     done();
-    detail.message = { text: "Saved.", kind: "ok" };
+    detail.message = { text: "Saved.", kind: "ok", at };
   } else if (reply.error === ROW_GONE) {
     rowGone(detail.id);
     return null;
   } else {
-    detail.message = { text: refusalMessage(reply), kind: "error" };
+    detail.message = { text: refusalMessage(reply), kind: "error", at };
   }
   // A refused save sends the sheet values back, so the control shows what the sheet holds now.
   if (reply.listing) putListing(reply.listing);

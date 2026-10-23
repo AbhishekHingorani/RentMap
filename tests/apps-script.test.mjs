@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { TRACKER_COLUMNS, PLACES_COLUMNS, SETTINGS_COLUMNS, STATUSES } from "../public/lib/columns.mjs";
+import { TRACKER_COLUMNS, PERSON_RATING_COLUMNS, PLACES_COLUMNS, SETTINGS_COLUMNS, STATUSES } from "../public/lib/columns.mjs";
 import { ALREADY_ON_MAP, linkKey } from "../public/lib/same-listing.mjs";
 import { CLASH, ITEM_COLUMNS, ROW_GONE, addItem, removeItem } from "../public/lib/our-take.mjs";
 import { EDIT_COLUMNS, LOCKED_COLUMNS, OUR_TAKE_COLUMNS } from "../public/lib/edit-listing.mjs";
@@ -169,7 +169,7 @@ test("setup makes the 3 tabs with the spec headers in row 1", () => {
   const { context, sheets } = runScript([]);
   context.setup();
   assert.deepEqual(sheets.get("Tracker").cells[0], TRACKER_COLUMNS);
-  assert.equal(sheets.get("Tracker").cells[0].length, 40);
+  assert.equal(sheets.get("Tracker").cells[0].length, 43);
   assert.deepEqual(sheets.get("Places").cells[0], PLACES_COLUMNS);
   assert.deepEqual(sheets.get("Settings").cells[0], SETTINGS_COLUMNS);
   assert.deepEqual(sheets.get("Settings").cells[1], ["Budget (₹/month)", ""]);
@@ -200,6 +200,23 @@ test("setup adds the City row to a Settings tab that lacks it, and keeps the row
   context.setup();
   assert.equal(settings.cells.length, 4);
   assert.equal(settings.cells[2][1], "Pune");
+});
+
+test("setup adds the new Tracker columns at the end, and ticks Shortlisted for an old Shortlisted Status", () => {
+  const old = TRACKER_COLUMNS.slice(0, 40);
+  const row = (status) => old.map((column) => (column === "Status" ? status : column === "Listing id" ? `L-${status}` : ""));
+  const tracker = fakeSheet("Tracker", [old, row("Shortlisted"), row("Visited")]);
+  const { context } = runScript([tracker]);
+  context.setup();
+  assert.deepEqual(tracker.cells[0], TRACKER_COLUMNS);
+  assert.equal(cellOf(tracker, 1, "Shortlisted"), true);
+  assert.equal(cellOf(tracker, 1, "Status"), "Shortlisted");
+  assert.equal(cellOf(tracker, 2, "Shortlisted") ?? "", "");
+
+  // A second run finds every column, so it ticks nothing new.
+  tracker.cells[1][TRACKER_COLUMNS.indexOf("Shortlisted")] = false;
+  context.setup();
+  assert.equal(cellOf(tracker, 1, "Shortlisted"), false);
 });
 
 test("setup leaves a tab that has data alone", () => {
@@ -240,7 +257,8 @@ test("an unknown action and a missing tab come back as errors", () => {
 
 test("the test rows for the sheet fit the Tracker columns and each has a map spot", () => {
   const text = readFileSync(new URL("../apps-script/test-rows.tsv", import.meta.url), "utf8");
-  const lines = text.trimEnd().split("\n");
+  // A row can end in empty cells, so only the last newline goes.
+  const lines = text.replace(/\n$/, "").split("\n");
   assert.equal(lines.length, 3);
   for (const line of lines) {
     const cells = line.split("\t");
@@ -406,7 +424,7 @@ test("addListing writes the row by header inside the lock, with Total monthly co
 
   assert.equal(reply.ok, true);
   assert.equal(tracker.cells.length, 2);
-  assert.equal(tracker.cells[1].length, 40);
+  assert.equal(tracker.cells[1].length, 43);
   assert.equal(cellOf(tracker, 1, "Listing id"), "L-abc");
   assert.equal(cellOf(tracker, 1, "Status"), "To call");
   assert.equal(cellOf(tracker, 1, "Added by"), "Asha");
@@ -424,7 +442,7 @@ test("addListing writes by the row 1 headers, so a moved column gets the right v
   const tracker = fakeSheet("Tracker", [headers]);
   const { context } = runScript([tracker]);
   post(context, { action: "addListing", listing: newRow() });
-  assert.equal(tracker.cells[1][0], "Asha");
+  assert.equal(tracker.cells[1][headers.indexOf("Added by")], "Asha");
   assert.equal(cellOf(tracker, 1, "Total monthly cost"), 41999);
 });
 
@@ -594,7 +612,7 @@ test("saveCells writes nothing and returns the sheet values when any old value d
     id: "L-abc",
     cells: [
       { column: "Safety", old: "", new: 4 },
-      { column: "Status", old: "To call", new: "Shortlisted" },
+      { column: "Status", old: "To call", new: "Rejected" },
     ],
   });
   assert.equal(reply.ok, false);
@@ -672,6 +690,29 @@ test("saveCells refuses a save when the row is gone from the sheet", () => {
   assert.equal(tracker.cells.length, 1);
 });
 
+test("saveCells ticks Shortlisted and writes each person's rating as a number, outside Overall rating", () => {
+  const { tracker, context } = savedTracker();
+  const reply = post(context, {
+    action: "saveCells",
+    id: "L-abc",
+    cells: [
+      { column: "Shortlisted", old: "", new: true },
+      { column: "Dimple's rating", old: "", new: "7.5" },
+      { column: "Abhishek's rating", old: "", new: 0 },
+    ],
+  });
+  assert.equal(reply.ok, true);
+  assert.equal(cellOf(tracker, 1, "Shortlisted"), true);
+  assert.equal(cellOf(tracker, 1, "Dimple's rating"), 7.5);
+  assert.equal(cellOf(tracker, 1, "Abhishek's rating"), 0);
+  assert.equal(cellOf(tracker, 1, "Overall rating"), "");
+
+  // The page saw true as JSON. The sheet holds the boolean, so the clash check passes.
+  const untick = post(context, { action: "saveCells", id: "L-abc", cells: [{ column: "Shortlisted", old: true, new: false }] });
+  assert.equal(untick.ok, true);
+  assert.equal(cellOf(tracker, 1, "Shortlisted"), false);
+});
+
 test("saveCells refuses a bad Status, a bad rating, and cells it must not write", () => {
   const { tracker, context } = savedTracker();
   const before = JSON.stringify(tracker.cells);
@@ -689,6 +730,11 @@ test("saveCells refuses a bad Status, a bad rating, and cells it must not write"
     [{ column: "Lat", old: 12.9, new: "north" }, "Lat must be a number from -90 to 90."],
     [{ column: "Long", old: 77.7, new: 200 }, "Long must be a number from -180 to 180."],
     [{ column: "Pin precision", old: "society", new: "exact" }, "Unknown Pin precision: exact"],
+    [{ column: "Status", old: "To call", new: "Shortlisted" }, "Unknown Status: Shortlisted"],
+    [{ column: "Shortlisted", old: "", new: "yes" }, "Shortlisted must be true or false."],
+    [{ column: "Dimple's rating", old: "", new: 10.5 }, "Dimple's rating must be a number from 0 to 10 in steps of 0.5, or empty."],
+    [{ column: "Abhishek's rating", old: "", new: 3.25 }, "Abhishek's rating must be a number from 0 to 10 in steps of 0.5, or empty."],
+    [{ column: "Abhishek's rating", old: "", new: -1 }, "Abhishek's rating must be a number from 0 to 10 in steps of 0.5, or empty."],
   ];
   for (const [cell, error] of cases) {
     assert.deepEqual(post(context, { action: "saveCells", id: "L-abc", cells: [cell] }), { ok: false, error }, cell.column);
@@ -769,6 +815,7 @@ test("editList refuses a gone row, another column, and an item with ;", () => {
 test("the script's Status and item lists match the page's", () => {
   const { context } = runScript([]);
   assert.deepEqual([...vm.runInContext("STATUSES", context)], STATUSES);
+  assert.deepEqual([...vm.runInContext("PERSON_RATING_COLUMNS", context)], PERSON_RATING_COLUMNS);
   assert.deepEqual([...vm.runInContext("ITEM_COLUMNS", context)], ITEM_COLUMNS);
 });
 

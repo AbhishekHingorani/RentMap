@@ -1,7 +1,7 @@
-// The Edit form and Move pin on the "All 40 fields" tab, from "Edit a listing" and "Two people edit one listing"
+// The Edit form and Move pin on the "All fields" tab, from "Edit a listing" and "Two people edit one listing"
 // in SPEC.md. No DOM here. Save sends only the changed cells, each with the value the person saw.
 // A refused save keeps what the person typed and marks each clashing cell with the sheet value now.
-import { TRACKER_COLUMNS } from "./columns.mjs";
+import { PERSON_RATING_COLUMNS, TRACKER_COLUMNS } from "./columns.mjs";
 import { toText } from "./listings.mjs";
 import { REPLY_COLUMNS, fieldProblems, fixValue } from "./add-listing.mjs";
 import { ITEM_COLUMNS, cellChange } from "./our-take.mjs";
@@ -21,9 +21,15 @@ export const LOCKED_COLUMNS = [
   "Pin precision",
 ];
 
+// The row above the tabs changes these. Each click saves one cell.
+export const TOP_TAKE_COLUMNS = ["Shortlisted", ...PERSON_RATING_COLUMNS];
+
+// The app no longer shows or changes Status. The column stays in the sheet.
+export const UNUSED_COLUMNS = ["Status"];
+
 // The Our take tab changes these, and the Overview tab changes Photos. The list cells change one item at a time,
 // so a whole-cell save cannot touch them. Notes wait for the owner, but they are a list cell too.
-export const OUR_TAKE_COLUMNS = ["Status", ...RATING_COLUMNS, ...ITEM_COLUMNS, "Notes", "Photos"];
+export const OUR_TAKE_COLUMNS = [...TOP_TAKE_COLUMNS, ...UNUSED_COLUMNS, ...RATING_COLUMNS, ...ITEM_COLUMNS, "Notes", "Photos"];
 
 // The cells the Edit form makes editable, in sheet order: the Claude-filled cells and the 3 contact cells
 // a person fills by hand, because no other part of the app can change those.

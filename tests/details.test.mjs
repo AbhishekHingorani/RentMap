@@ -14,10 +14,10 @@ import {
   photoLinks,
 } from "../public/lib/details.mjs";
 
-test("All 40 fields lists every Tracker column with its number, in sheet order", () => {
+test("All 43 fields lists every Tracker column with its number, in sheet order", () => {
   const [listing] = listingsFromRows([{ "Listing id": "abc", Locality: "Whitefield" }]);
   const fields = allFields(listing);
-  assert.equal(fields.length, 40);
+  assert.equal(fields.length, 43);
   assert.deepEqual(
     fields.map((f) => f.column),
     TRACKER_COLUMNS,
