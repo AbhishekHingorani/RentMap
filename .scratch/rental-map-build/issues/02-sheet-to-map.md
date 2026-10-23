@@ -44,6 +44,7 @@ Built on 2026-10-23. The 3 open boxes need the owner's Google account. The agent
 - A headless Chromium run against a fake `/exec` showed the name popup, the 5 cards in cost order, the pins with Status colors, and "© OpenStreetMap contributors".
 - A row typed by hand may have no Total monthly cost. The page then uses Rent plus Maintenance, the same rule the Max ₹/month filter uses.
 - A Drive photo link does not show on the card yet. Ticket 10 adds the thumbnail URL.
+- `setup` writes only the Budget row in Settings. The City row belongs to ticket 04. `setup` skips a tab that already has rows, so ticket 04 must add City another way.
 
 Still open, for the owner. `README.md` lists the steps.
 

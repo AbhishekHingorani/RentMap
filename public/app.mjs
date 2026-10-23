@@ -1,9 +1,8 @@
 // The page: asks the person's name, loads the sheet in one Apps Script call, and shows cards and pins.
-import { formatRupees, listingsFromRows, pinLabel, sortByCost } from "/lib/listings.mjs";
+import { NOT_GIVEN, formatRupees, listingsFromRows, pinLabel, sortByCost } from "/lib/listings.mjs";
 import { STATUSES } from "/lib/columns.mjs";
 
 const NAME_KEY = "rentalMap.personName";
-const NOT_GIVEN = "not given";
 
 const listEl = document.getElementById("list");
 const metaEl = document.getElementById("list-meta");
@@ -55,7 +54,13 @@ async function loadSheet() {
     body: JSON.stringify({ action: "load" }),
   });
   if (!res.ok) throw new Error(`The Apps Script answered HTTP ${res.status}.`);
-  const reply = await res.json();
+  let reply;
+  try {
+    reply = await res.json();
+  } catch {
+    // A deploy with "Anyone with Google account" access sends a sign-in page, not JSON.
+    throw new Error('The Apps Script did not send JSON. Check that "Who has access" is set to Anyone.');
+  }
   if (!reply.ok) throw new Error(`The Apps Script said: ${reply.error}`);
   return reply;
 }

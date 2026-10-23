@@ -1,6 +1,6 @@
 // Turns sheet rows into listings for the list and the map. No DOM here, so tests can run it in Node.
 
-const NOT_GIVEN = "not given";
+export const NOT_GIVEN = "not given";
 const rupeeDigits = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 
 // A hand-typed cell can hold "38,999" or "₹38,999" as text. An empty cell is null.
@@ -53,7 +53,7 @@ export function listingsFromRows(rows) {
 // Lowest total cost first. A listing with no rent goes last. Ties keep sheet order.
 export function sortByCost(listings) {
   const key = (l) => (l.rent === null || l.totalCost === null ? Infinity : l.totalCost);
-  return [...listings].sort((a, b) => key(a) - key(b));
+  return [...listings].sort((a, b) => (key(a) === key(b) ? 0 : key(a) - key(b)));
 }
 
 function shortRupees(amount) {

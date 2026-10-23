@@ -38,3 +38,9 @@ test("files outside public/ are not served", async () => {
     assert.equal(res.status, 404, path);
   }
 });
+
+test("fonts are served as woff2", async () => {
+  const res = await fetch(`${base}/fonts/plex-sans-latin.woff2`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "font/woff2");
+});

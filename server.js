@@ -18,6 +18,7 @@ const TYPES = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
 };
 
 // config.json is not in git, because the Apps Script /exec URL is a secret.
@@ -107,6 +108,10 @@ function openInChrome(url) {
 function main() {
   const config = readConfig();
   const port = Number(process.env.PORT || config.port || DEFAULT_PORT);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(`The port must be a number from 1 to 65535. Got: ${process.env.PORT || config.port}`);
+    process.exit(1);
+  }
   const url = `http://localhost:${port}`;
   if (!config.appsScriptUrl) {
     console.log("No appsScriptUrl in config.json. Copy config.example.json to config.json and set it.");
