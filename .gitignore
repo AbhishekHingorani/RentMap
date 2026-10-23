@@ -1,0 +1,2 @@
+# Plugin state files. The autoharness plugin writes these in any folder a session works in.
+**/.claude/autoharness/
