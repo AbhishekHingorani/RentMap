@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Apps Script call check</title>
+    <style>
+      body { font: 16px/1.5 system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
+      input { width: 100%; font: inherit; padding: 0.4rem; }
+      pre { background: #f4f4f4; padding: 1rem; white-space: pre-wrap; word-break: break-all; }
+      .ok { color: #0a6b2a; }
+      .fail { color: #a11; }
+    </style>
+  </head>
+  <body>
+    <h1>Apps Script call check</h1>
+    <p>Paste the <code>/exec</code> URL, then press Send.</p>
+    <input id="url" placeholder="https://script.google.com/macros/s/.../exec" />
+    <p><button id="send">Send</button></p>
+    <p id="verdict"></p>
+    <pre id="out"></pre>
+    <script>
+      const urlBox = document.getElementById("url");
+      const out = document.getElementById("out");
+      const verdict = document.getElementById("verdict");
+
+      // ?url=... fills the box and sends at once, so a headless browser can run the check.
+      const fromQuery = new URLSearchParams(location.search).get("url");
+      if (fromQuery) urlBox.value = fromQuery;
+
+      async function send() {
+        const sent = { action: "ping", text: "hello from localhost", n: 42 };
+        out.textContent = "Sending...";
+        verdict.textContent = "";
+        verdict.className = "";
+        try {
+          // text/plain is a CORS "simple" type, so the browser sends no preflight.
+          const res = await fetch(urlBox.value.trim(), {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(sent),
+          });
+          const text = await res.text();
+          const reply = JSON.parse(text);
+          const works = reply.ok === true && reply.got && reply.got.n === 42;
+          verdict.textContent = works ? "WORKS" : "FAILS: reply is not the echo";
+          verdict.className = works ? "ok" : "fail";
+          out.textContent = JSON.stringify(
+            { status: res.status, redirected: res.redirected, finalUrl: res.url, reply },
+            null,
+            2,
+          );
+        } catch (err) {
+          verdict.textContent = "FAILS: " + err;
+          verdict.className = "fail";
+          out.textContent = String(err) + "\n\nOpen DevTools > Console for the exact browser error.";
+        }
+      }
+
+      document.getElementById("send").addEventListener("click", send);
+      if (fromQuery) send();
+    </script>
+  </body>
+</html>
