@@ -27,7 +27,6 @@
         </header>
         <div class="side-actions">
           <button class="add-open" id="add-open" type="button" hidden>+ Add listing</button>
-          <button class="back-link" id="details-back" type="button" hidden>← Back to the list</button>
         </div>
         <div class="tab-bar side-tabs" id="side-tabs" role="tablist" aria-label="Left column">
           <button class="tab" id="side-tab-listings" type="button" role="tab" data-tab="listings" aria-controls="list-view" aria-selected="true">Listings</button>
@@ -63,7 +62,6 @@
           <p class="list-meta" id="list-meta" aria-live="polite">Loading the sheet…</p>
           <ol class="list" id="list"></ol>
         </div>
-        <article class="details" id="details" hidden></article>
         <div class="places-view" id="places-view" role="tabpanel" aria-labelledby="side-tab-places" hidden>
           <ol class="place-list" id="place-list"></ol>
           <form class="place-form" id="place-form" aria-labelledby="place-form-title">
@@ -92,6 +90,12 @@
           </div>
           <ol class="add-steps" id="add-steps"></ol>
         </section>
+      </section>
+      <section class="detail-side" id="detail-side" aria-label="Listing details" hidden>
+        <div class="detail-side-head">
+          <button class="back-link" id="details-back" type="button">✕ Close</button>
+        </div>
+        <article class="details" id="details"></article>
       </section>
       <div class="map" id="map" aria-label="Map of listings"></div>
     </main>

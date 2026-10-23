@@ -92,6 +92,7 @@ const metaEl = document.getElementById("list-meta");
 const whoEl = document.getElementById("who");
 const listViewEl = document.getElementById("list-view");
 const detailsEl = document.getElementById("details");
+const detailSideEl = document.getElementById("detail-side");
 const filtersEl = document.getElementById("filters");
 const sideTabEls = [...document.querySelectorAll("#side-tabs .tab")];
 const placesViewEl = document.getElementById("places-view");
@@ -210,7 +211,6 @@ const state = {
   saves: 0,
   markers: new Map(),
   roughCircle: null,
-  listScroll: 0,
   // The add steps, while they are open. null when they are closed.
   add: null,
 };
@@ -413,6 +413,7 @@ function card(listing) {
   // The button covers the whole card, so a click anywhere on it opens the details.
   const open = el("button", "card-open", listing.society || NOT_GIVEN);
   open.type = "button";
+  if (listing.id === state.pickedId) open.setAttribute("aria-current", "true");
   open.addEventListener("click", () => openDetails(listing.id));
   const society = el("h2", "card-society");
   society.append(open);
@@ -1040,6 +1041,13 @@ function markPin(id, picked) {
   marker.setZIndexOffset(picked ? 1000 : 0);
 }
 
+// Marks the card of the open listing, so the list shows which one the details column holds.
+function markCard(id, picked) {
+  const open = listEl.querySelector(`.card[data-id="${CSS.escape(id)}"] .card-open`);
+  if (picked) open?.setAttribute("aria-current", "true");
+  else open?.removeAttribute("aria-current");
+}
+
 // What the open details hold besides the listing. notice is a line under the header, like a save with no map spot.
 // drafts keeps a half-typed pro or con. edit is the open Edit form, or null. moving is true while the pin is draggable.
 // busy is false, or the text to show while a call is out, like "Saving…".
@@ -1054,23 +1062,23 @@ function openDetails(id, { notice = "" } = {}) {
   if (!addViewEl.hidden) hideAddSteps();
   // A pin click can come while the Places tab is open. The details belong to the Listings tab.
   if (!placesViewEl.hidden) pickSideTab("listings", false);
-  if (state.pickedId === null) state.listScroll = listEl.scrollTop;
   closePick();
   state.pickedId = id;
   state.detail = freshDetail(id, notice);
 
   renderDetails();
-  listViewEl.hidden = true;
-  detailsEl.hidden = false;
+  detailSideEl.hidden = false;
   detailsEl.scrollTop = 0;
-  detailsBackEl.hidden = false;
+  // The details column takes room from the map, so Leaflet must measure the map again before it moves.
+  map.invalidateSize();
   detailsBackEl.focus();
 
+  markCard(id, true);
   if (listing.spot) {
     markPin(id, true);
     const circle = drawRoughCircle(listing);
     if (circle) map.fitBounds(circle.getBounds(), { padding: [60, 60], maxZoom: 16 });
-    else map.panTo(listing.spot);
+    else map.setView(listing.spot, Math.max(map.getZoom(), 15));
   }
   // Someone may have changed the row since the app loaded the sheet, so read it again.
   if (toText(listing.row["Listing id"])) readListingAgain(state.detail);
@@ -1419,7 +1427,10 @@ async function dropPin(id, latLng) {
 // Takes the picked look off the pin and removes the dashed circle. A pin left mid-move goes back to its spot.
 function closePick() {
   if (state.detail?.moving) putPinBack(state.detail.id);
-  if (state.pickedId !== null) markPin(state.pickedId, false);
+  if (state.pickedId !== null) {
+    markPin(state.pickedId, false);
+    markCard(state.pickedId, false);
+  }
   if (state.roughCircle) state.roughCircle.remove();
   state.roughCircle = null;
 }
@@ -1429,11 +1440,9 @@ function closeDetails() {
   closePick();
   state.pickedId = null;
   state.detail = null;
-  detailsBackEl.hidden = true;
-  detailsEl.hidden = true;
+  detailSideEl.hidden = true;
   detailsEl.replaceChildren();
-  listViewEl.hidden = false;
-  listEl.scrollTop = state.listScroll;
+  map.invalidateSize();
   listEl.querySelector(`.card[data-id="${CSS.escape(id)}"] .card-open`)?.focus();
 }
 
@@ -1771,7 +1780,7 @@ function hideAddSteps() {
   addViewEl.hidden = true;
   sideTabsEl.hidden = false;
   addOpenEl.hidden = false;
-  listViewEl.hidden = state.pickedId !== null;
+  listViewEl.hidden = false;
 }
 
 function closeAddSteps() {
@@ -2269,7 +2278,7 @@ function pickSideTab(key, focus) {
     tab.tabIndex = on ? 0 : -1;
     if (on && focus) tab.focus();
   }
-  listViewEl.hidden = key !== "listings" || state.pickedId !== null;
+  listViewEl.hidden = key !== "listings";
   placesViewEl.hidden = key !== "places";
 }
 
