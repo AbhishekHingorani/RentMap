@@ -1230,3 +1230,36 @@ button.place-open:hover {
 .details > .add-error {
   margin-bottom: 0.75rem;
 }
+
+/* "Reply looks wrong?" is small, so it does not pull the eye from the main button. */
+.add-wrong {
+  justify-self: start;
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+/* The bookmarklet. The person drags it to the bookmarks bar, so it looks like a thing to pick up. */
+.add-bookmarklet {
+  padding: 0.375rem 0.75rem;
+  border: 1px dashed var(--ink-soft);
+  border-radius: 4px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  background: var(--ground);
+  cursor: grab;
+}
+
+.add-bookmarklet:active {
+  cursor: grabbing;
+}
+
+/* "Ask my local Claude" sits under a line, since it is the other way to the same reply. */
+.add-local {
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--line);
+}
+
+.add-local .add-secondary {
+  justify-self: start;
+}

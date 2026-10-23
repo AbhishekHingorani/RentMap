@@ -191,13 +191,18 @@ The add steps show in the left column, stacked. The current step is open. A done
 8. If lat and long are `null`, the app finds the map spot from society plus locality.
 
 - **Built (ticket 05).** The page code is `public/lib/add-listing.mjs` and the add steps in `public/app.mjs`. The Apps Script action is `addListing`.
-  - The step 3 failure shows a message for now. Ticket 07 adds the bookmarklet step.
   - The review form fixes Configuration ("2 BHK" to 2BHK, "5 BHK" to 4BHK+), money and other numbers ("38,999" to 38999, "38k" to 38000, "1.17 lakh" to 117000), Listed by, Furnishing, Parking and Lift. A value it cannot fix stays as it came, unmarked, and Save refuses it with a message that names the column.
   - The Listing id stays the same when the person changes the reply. It is new only for a new link.
   - When the reply gives lat and long, the Pin precision is building, because the listing page puts the pin on the home.
   - The Listing id is `L-` plus a random UUID. Date added is the person's local date, as YYYY-MM-DD.
   - A listing with no map spot still saves. Its card says "No map spot yet", and its details say why.
   - Overall rating is rounded to 2 decimals. Total monthly cost is rent alone when Maintenance is empty, and empty when Rent is empty.
+- **Built (ticket 07).** The bookmarklet is `public/lib/bookmarklet.mjs`. "Ask my local Claude" is `local-claude.js` and the server route `POST /api/local-claude`.
+  - The bookmarklet step shows only after a failed reply or a "Reply looks wrong?" click. It is a step between "Ask Claude web" and "Check and save".
+  - A reply with no JSON at all is a paste mistake. It shows a message and does not open the bookmarklet step.
+  - A 99acres page with no `spid-` in its URL also gets "Reload this page and click again".
+  - The 99acres pick on the saved sample is 3,194 characters. It leaves out `haveModernLifts`, because the sample has `false` there while its description says it has lifts.
+  - The server runs `claude` in the temp folder, so it reads no CLAUDE.md from the repo. It runs one call at a time and stops a call after 3 minutes.
 
 ### Claude's reply
 
@@ -339,7 +344,7 @@ These are not decided. Each one needs the owner before that part is built.
 - **housing.com.** What data its listing page holds for the bookmarklet. Save one listing page into `samples/` first. Until then, the bookmarklet uses `innerText` there.
 - **99acres without a reload.** When a listing is opened from a search page, does `__initialData__` still match the URL. The `Prop_Id` check covers this, but it is untested.
 - **Copy site photos into Drive,** so they survive when the listing goes away. No test shows that the browser or the Apps Script can download 99acres photos. For now, site links are kept as they are.
-- **Cost of one local `claude -p` call** with the flags above. Not measured.
+- **Cost of one local `claude -p` call** with the flags above. One run on the saved 99acres sample cost $0.0025 (2026-10-23). Not measured on page text or on other listings.
 - **Road distance** by car or bike, in place of straight-line distance. Needs a free routing service for India.
 - **Small points the tickets do not settle:**
   - How notes are split inside the Notes cell.

@@ -34,21 +34,55 @@ const LISTED_BY = ["Owner", "Dealer"];
 const FURNISHINGS = ["Unfurnished", "Semi-furnished", "Fully furnished"];
 const YES_NO = ["Yes", "No"];
 
-// The words may change. The keys must stay as REPLY_COLUMNS has them.
+// Every line of the step 1 prompt after the first. The words may change. The keys must stay as REPLY_COLUMNS has them.
+const PROMPT_TAIL = [
+  "Reply with one JSON object in a ```json block and nothing else.",
+  "Keys: society, locality, configuration (1RK|1BHK|2BHK|3BHK|4BHK+),",
+  "listedBy (Owner|Dealer), brokerName, rent, maintenance, deposit,",
+  "brokerage (numbers in rupees), carpetArea, superArea (sq ft),",
+  'bathrooms, floor (like "4 of 4"),',
+  "furnishing (Unfurnished|Semi-furnished|Fully furnished),",
+  "parking (Yes|No), lift (Yes|No), availableFrom, otherDetails,",
+  "photos (full-size image links of this flat only), lat, long.",
+  "Write null for anything the page does not show. Do not guess.",
+  'If you cannot open the page, reply {"error": "could_not_read"}.',
+].join("\n");
+
 export function stepOnePrompt(link) {
-  return [
-    `Open this rental listing: ${link}`,
-    "Reply with one JSON object in a ```json block and nothing else.",
-    "Keys: society, locality, configuration (1RK|1BHK|2BHK|3BHK|4BHK+),",
-    "listedBy (Owner|Dealer), brokerName, rent, maintenance, deposit,",
-    "brokerage (numbers in rupees), carpetArea, superArea (sq ft),",
-    'bathrooms, floor (like "4 of 4"),',
-    "furnishing (Unfurnished|Semi-furnished|Fully furnished),",
-    "parking (Yes|No), lift (Yes|No), availableFrom, otherDetails,",
-    "photos (full-size image links of this flat only), lat, long.",
-    "Write null for anything the page does not show. Do not guess.",
-    'If you cannot open the page, reply {"error": "could_not_read"}.',
-  ].join("\n");
+  return [`Open this rental listing: ${link}`, PROMPT_TAIL].join("\n");
+}
+
+// The first line of the step 2 prompt starts with this. The page data follows it.
+export const STEP_TWO_START = "Here is the listing page data: ";
+
+// The step 2 prompt is the step 1 prompt with the page data in place of the link.
+// The bookmarklet cannot import this module, so it gets the data line and the tail from bookmarklet.mjs.
+export function stepTwoPrompt(data) {
+  return [`${STEP_TWO_START}${data}`, PROMPT_TAIL].join("\n");
+}
+
+// Every line of the step 2 prompt after the page data.
+export function stepTwoTail() {
+  return PROMPT_TAIL;
+}
+
+// Text pasted for "Ask my local Claude" is most often the whole step 2 prompt the bookmarklet copied.
+// Page data pasted alone gets the prompt put around it.
+export function localClaudePrompt(text) {
+  const pasted = toText(text);
+  return pasted.startsWith(STEP_TWO_START.trim()) ? pasted : stepTwoPrompt(pasted);
+}
+
+const TEXT_KEYS = Object.keys(REPLY_COLUMNS).filter((key) => key !== "photos" && !NUMBER_KEYS.includes(key));
+
+// The JSON schema for "Ask my local Claude". claude -p puts a reply in this shape in structured_output.
+// Every key must be there, with null for anything the page does not show, as the prompt asks.
+export function replySchema() {
+  const properties = {};
+  for (const key of TEXT_KEYS) properties[key] = { type: ["string", "null"] };
+  for (const key of NUMBER_KEYS) properties[key] = { type: ["number", "null"] };
+  properties.photos = { type: ["array", "null"], items: { type: "string" } };
+  return { type: "object", properties, required: Object.keys(REPLY_COLUMNS), additionalProperties: false };
 }
 
 // Only an http or https link can be a listing page.
@@ -66,7 +100,7 @@ const COULD_NOT_READ = "Claude could not read the listing page.";
 const NO_RENT_OR_LOCALITY = "Claude's reply has no rent and no locality, so it most likely did not read the page.";
 
 // Reads the ```json block of Claude's reply. A reply with no block is read whole, for a bare JSON object.
-// Returns { ok: true, reply } or { ok: false, error }.
+// Returns what checkReply returns. A reply with no JSON is { ok: false, error }, with no unread mark.
 export function readReply(text) {
   const raw = toText(text);
   const block = raw.match(/```json\s*([\s\S]*?)```/i);
@@ -77,8 +111,15 @@ export function readReply(text) {
     return { ok: false, error: NO_JSON };
   }
   if (!reply || typeof reply !== "object" || Array.isArray(reply)) return { ok: false, error: NO_JSON };
-  if (reply.error === "could_not_read") return { ok: false, error: COULD_NOT_READ };
-  if (isEmpty(reply.rent) && isEmpty(reply.locality)) return { ok: false, error: NO_RENT_OR_LOCALITY };
+  return checkReply(reply);
+}
+
+// The failure checks for a reply object, from Claude web or from local Claude.
+// Returns { ok: true, reply } or { ok: false, error, unread: true }. unread means Claude did not read the page,
+// so the app opens the bookmarklet step.
+export function checkReply(reply) {
+  if (reply.error === "could_not_read") return { ok: false, error: COULD_NOT_READ, unread: true };
+  if (isEmpty(reply.rent) && isEmpty(reply.locality)) return { ok: false, error: NO_RENT_OR_LOCALITY, unread: true };
   return { ok: true, reply };
 }
 

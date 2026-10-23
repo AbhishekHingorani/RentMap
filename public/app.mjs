@@ -2,6 +2,7 @@
 // A click on a card or a pin opens the listing details. The filter bar narrows the list and the map.
 // The Places tab lists the places, like an office, and adds one. Each place shows on the map as a black star.
 // "+ Add listing" opens the add steps in the left column: paste a link, ask Claude web, check the values and save.
+// When Claude web cannot read the page, the bookmarklet step reads it in the person's own browser.
 // A link already on the map blocks the add. The same society and Configuration only warns.
 import {
   NOT_GIVEN,
@@ -28,15 +29,18 @@ import {
 } from "/lib/details.mjs";
 import { cityFrom, distancesFor, placesFromRows } from "/lib/places.mjs";
 import {
+  checkReply,
   dateText,
   fieldProblems,
   listingLink,
+  localClaudePrompt,
   newListingRow,
   pageSpot,
   readReply,
   reviewFields,
   stepOnePrompt,
 } from "/lib/add-listing.mjs";
+import { bookmarkletHref } from "/lib/bookmarklet.mjs";
 import { ALREADY_ON_MAP, maybeMatchMessage, maybeMatches, sureMatch, sureMatchMessage } from "/lib/same-listing.mjs";
 
 const NAME_KEY = "rentalMap.personName";
@@ -665,16 +669,44 @@ async function addPlace(event) {
 
 // --- Add a listing by link ---
 
-const ADD_STEPS = [
-  { title: "Paste the listing link", body: linkStep, summary: (add) => add.link },
-  { title: "Ask Claude web", body: claudeStep, summary: (add) => add.fields.find((f) => f.key === "society")?.value || "Reply read" },
-  { title: "Check and save", body: reviewStep },
-];
+const societySummary = (add) => add.fields.find((f) => f.key === "society")?.value || "Reply read";
+
+const ADD_STEPS = {
+  link: { title: "Paste the listing link", body: linkStep, summary: (add) => add.link },
+  claude: { title: "Ask Claude web", body: claudeStep, summary: (add) => (add.bookmarklet ? "Moved to the bookmarklet" : societySummary(add)) },
+  bookmarklet: { title: "Read the page with the bookmarklet", body: bookmarkletStep, summary: societySummary },
+  review: { title: "Check and save", body: reviewStep },
+};
+
+// The bookmarklet step shows only once a reply fails or the person clicks "Reply looks wrong?".
+function stepKeys(add) {
+  return add.bookmarklet ? ["link", "claude", "bookmarklet", "review"] : ["link", "claude", "review"];
+}
 
 // sure is the saved listing with the same link key. maybe holds saved listings with the same society and
 // Configuration, and maybeOk is true once the person clicks "Save anyway".
+// bookmarklet is true once the bookmarklet step is open. failure says why Claude web's reply failed.
+// pageReplyText is Claude's reply in the bookmarklet step, and localText is the text for "Ask my local Claude".
 function freshAdd() {
-  return { step: 0, link: "", replyText: "", fields: [], id: null, spot: undefined, error: "", busy: false, sure: null, maybe: [], maybeOk: false };
+  return {
+    step: 0,
+    link: "",
+    replyText: "",
+    fields: [],
+    id: null,
+    spot: undefined,
+    error: "",
+    busy: false,
+    sure: null,
+    maybe: [],
+    maybeOk: false,
+    ...freshReading(),
+  };
+}
+
+// What the Claude steps hold for one link.
+function freshReading() {
+  return { bookmarklet: false, failure: "", pageReplyText: "", localText: "" };
 }
 
 function openAddSteps() {
@@ -707,11 +739,22 @@ function goToStep(index) {
   renderAddSteps();
 }
 
+function goToStepNamed(key) {
+  goToStep(stepKeys(state.add).indexOf(key));
+}
+
+// Opens the bookmarklet step. failure is why the reply failed, or "" when the person asked for it.
+function openBookmarkletStep(add, failure) {
+  Object.assign(add, { bookmarklet: true, failure });
+  goToStepNamed("bookmarklet");
+}
+
 // The steps are stacked. The current step is open, a done step folds to one line, and later steps are greyed out.
 function renderAddSteps() {
   const add = state.add;
   addStepsEl.replaceChildren(
-    ...ADD_STEPS.map((step, index) => {
+    ...stepKeys(add).map((key, index) => {
+      const step = ADD_STEPS[key];
       const item = el("li", "add-step");
       const title = el("h3", "add-step-title");
       title.append(el("span", "add-step-number", String(index + 1)), el("span", "", step.title));
@@ -776,7 +819,7 @@ function linkStep(add) {
       return;
     }
     // A new link is a new listing, so the reply, the values and the Listing id start again.
-    if (link !== add.link) Object.assign(add, { link, replyText: "", fields: [], id: null, spot: undefined, maybeOk: false });
+    if (link !== add.link) Object.assign(add, { link, replyText: "", fields: [], id: null, spot: undefined, maybeOk: false, ...freshReading() });
     // This runs before any Claude step, so nobody asks Claude about a listing that is already on the map.
     const sure = sureMatch(state.listings, link);
     if (sure) {
@@ -784,7 +827,7 @@ function linkStep(add) {
       renderAddSteps();
       return;
     }
-    goToStep(1);
+    goToStepNamed("claude");
   });
   return [form];
 }
@@ -833,17 +876,174 @@ function claudeStep(add) {
     event.preventDefault();
     add.replyText = reply.value;
     const result = readReply(reply.value);
+    if (result.unread) {
+      openBookmarkletStep(add, result.error);
+      return;
+    }
     if (!result.ok) {
-      add.error = `${result.error} Check that Claude opened the right page, or ask again in a new chat.`;
+      add.error = result.error;
       renderAddSteps();
       return;
     }
-    // The Listing id stays. A Save that failed may still have written the row, and the next Save must find it.
-    Object.assign(add, { fields: reviewFields(result.reply), spot: undefined });
-    goToStep(2);
+    showReview(add, result.reply);
   });
 
-  return [el("p", "add-hint", "Copy this prompt into a new chat on Claude web. Then paste Claude's reply below."), promptBox, copyRow, form];
+  return [
+    el("p", "add-hint", "Copy this prompt into a new chat on Claude web. Then paste Claude's reply below."),
+    promptBox,
+    copyRow,
+    form,
+    wrongReplyLink(add, () => {
+      add.replyText = reply.value;
+    }),
+  ];
+}
+
+// The Listing id stays. A Save that failed may still have written the row, and the next Save must find it.
+function showReview(add, reply) {
+  Object.assign(add, { fields: reviewFields(reply), spot: undefined });
+  goToStepNamed("review");
+}
+
+// The small "Reply looks wrong?" link. keep saves what the person typed in the open step first.
+function wrongReplyLink(add, keep = () => {}) {
+  const wrong = el("button", "back-link add-wrong", "Reply looks wrong? Read the page with the bookmarklet");
+  wrong.type = "button";
+  wrong.disabled = add.busy;
+  wrong.addEventListener("click", () => {
+    keep();
+    openBookmarkletStep(add, "");
+  });
+  return wrong;
+}
+
+const BOOKMARKLET_HREF = bookmarkletHref();
+
+// Steps 4 to 6 of the spec: the bookmarklet copies the step 2 prompt on the open listing page.
+// The person pastes it into Claude web, or into the box for "Ask my local Claude".
+function bookmarkletStep(add) {
+  const parts = [];
+  if (add.failure) parts.push(el("p", "add-error", `${add.failure} Read the page with the bookmarklet instead.`));
+
+  const bookmark = el("a", "add-bookmarklet", "Rental map: read page");
+  bookmark.href = BOOKMARKLET_HREF;
+  bookmark.dataset.focus = "";
+  const dragNote = el("span", "add-hint");
+  dragNote.setAttribute("aria-live", "polite");
+  // A click here would run the bookmarklet on this app, not on the listing page.
+  bookmark.addEventListener("click", (event) => {
+    event.preventDefault();
+    dragNote.textContent = "Drag the button to the bookmarks bar. A click here does nothing.";
+  });
+  const bookmarkRow = el("div", "add-row");
+  bookmarkRow.append(bookmark, dragNote);
+  const listing = el("a", "add-link", "Open the listing page");
+  listing.href = add.link;
+  listing.target = "_blank";
+  listing.rel = "noopener noreferrer";
+  const claude = el("a", "add-link", "Open Claude web");
+  claude.href = "https://claude.ai/new";
+  claude.target = "_blank";
+  claude.rel = "noopener noreferrer";
+  const openRow = el("div", "add-row");
+  openRow.append(listing, claude);
+  parts.push(
+    el("p", "add-hint", "Once: drag this button to the bookmarks bar in Chrome. If you do not see the bar, press Cmd+Shift+B."),
+    bookmarkRow,
+    el(
+      "p",
+      "add-hint",
+      "Then open the listing page and click the bookmark. It copies a prompt with the page data. If it says to reload, reload the page and click it again.",
+    ),
+    openRow,
+  );
+
+  const webForm = el("form", "add-form");
+  const webLabel = el("label");
+  const webReply = el("textarea");
+  webReply.rows = 5;
+  webReply.placeholder = "Paste all of Claude's reply here";
+  webReply.value = add.pageReplyText;
+  webLabel.append(el("span", "", "Paste the prompt into a new chat on Claude web. Then paste Claude's reply here."), webReply);
+  const read = el("button", "add-primary", "Read the reply");
+  read.type = "submit";
+  read.disabled = add.busy;
+  webForm.append(webLabel, read);
+  webForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    add.pageReplyText = webReply.value;
+    const result = readReply(webReply.value);
+    if (!result.ok) {
+      add.error = result.unread ? `${result.error} Check that the bookmarklet ran on the listing page, then paste the new prompt.` : result.error;
+      renderAddSteps();
+      return;
+    }
+    showReview(add, result.reply);
+  });
+
+  const localForm = el("form", "add-form add-local");
+  const localLabel = el("label");
+  const localText = el("textarea");
+  localText.rows = 4;
+  localText.placeholder = "Paste the prompt the bookmarklet copied";
+  localText.value = add.localText;
+  localText.addEventListener("input", () => {
+    add.localText = localText.value;
+  });
+  localLabel.append(el("span", "", "Have Claude Code on this computer? Paste the prompt here instead."), localText);
+  const ask = el("button", "add-secondary", add.busy ? "Asking local Claude…" : "Ask my local Claude");
+  ask.type = "submit";
+  ask.disabled = add.busy;
+  const askNote = el("p", "add-hint");
+  askNote.setAttribute("aria-live", "polite");
+  if (add.busy) askNote.textContent = "This can take a minute. One run costs at most $0.10.";
+  localForm.append(localLabel, ask, askNote);
+  localForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    add.pageReplyText = webReply.value;
+    askLocalClaude(add);
+  });
+
+  parts.push(webForm, localForm);
+  return parts;
+}
+
+// Sends the pasted text to the local web server, which runs claude -p. On any failure the pasted text stays in the box.
+async function askLocalClaude(add) {
+  if (!add.localText.trim()) {
+    add.error = "Paste the prompt the bookmarklet copied, then click Ask my local Claude.";
+    renderAddSteps();
+    return;
+  }
+  Object.assign(add, { busy: true, error: "" });
+  renderAddSteps();
+  let error = "";
+  let reply = null;
+  try {
+    const res = await fetch("/api/local-claude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: localClaudePrompt(add.localText) }),
+    });
+    const body = await res.json().catch(() => ({ ok: false, error: `The local web server answered HTTP ${res.status}.` }));
+    if (body.ok) {
+      const result = checkReply(body.reply);
+      if (result.ok) reply = result.reply;
+      else error = `${result.error} Check that the bookmarklet ran on the listing page.`;
+    } else {
+      error = body.error;
+    }
+  } catch {
+    error = "Could not reach the local web server. Check that node server.js is still running.";
+  }
+  add.busy = false;
+  if (state.add !== add) return;
+  if (reply) {
+    showReview(add, reply);
+    return;
+  }
+  add.error = error;
+  renderAddSteps();
 }
 
 // Long text fields get a box with more room.
@@ -889,7 +1089,7 @@ function reviewStep(add) {
     event.preventDefault();
     saveListing(add);
   });
-  return [form];
+  return [form, wrongReplyLink(add)];
 }
 
 // A sure match blocks the add and has only "Open it". A maybe-match has "Open it" for each listing and "Save anyway".

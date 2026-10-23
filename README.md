@@ -43,6 +43,16 @@ If the reply has no Lat and Long, the app finds the map spot from the society an
 
 After you paste a new `Code.gs`, edit the deployment and pick a new version, or the `addListing` call fails with "unknown action".
 
+### When Claude web cannot read the page
+
+If the reply says `could_not_read`, or has no rent and no locality, the app opens the bookmarklet step. The small "Reply looks wrong?" link opens it too.
+
+1. Drag the "Rental map: read page" button from that step to the bookmarks bar in Chrome. Do this once. Press Cmd+Shift+B if the bar is hidden.
+2. Open the listing page and click the bookmark. It copies a prompt with the page data. If it cannot copy, it shows the prompt in a box with a Copy button.
+3. Paste the prompt into a new chat on Claude web, and paste Claude's reply back into the app.
+
+With Claude Code on your computer, paste the prompt into the "Ask my local Claude" box instead. The local web server runs `claude -p` with Haiku and a $0.10 cap. One run on the saved 99acres sample cost $0.0025 and took 11 seconds.
+
 A link that is already on the map stops the add at step 1, with an "Open it" button. For 99acres, two links with the same `spid-` part count as the same listing. At Save, a saved listing with the same society and Configuration gets a warning. Click "Save anyway" to add it all the same.
 
 ## Test with a few rows

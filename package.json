@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test tests/",
-    "check": "node --check server.js && node --check geocoder.js && node --check public/app.mjs && node --check public/lib/listings.mjs && node --check public/lib/columns.mjs && node --check public/lib/filters.mjs && node --check public/lib/details.mjs && node --check public/lib/places.mjs && node --check public/lib/add-listing.mjs && node --check public/lib/same-listing.mjs"
+    "check": "node --check server.js && node --check geocoder.js && node --check local-claude.js && node --check public/app.mjs && node --check public/lib/listings.mjs && node --check public/lib/columns.mjs && node --check public/lib/filters.mjs && node --check public/lib/details.mjs && node --check public/lib/places.mjs && node --check public/lib/add-listing.mjs && node --check public/lib/same-listing.mjs && node --check public/lib/bookmarklet.mjs"
   },
   "engines": {
     "node": ">=18.12"

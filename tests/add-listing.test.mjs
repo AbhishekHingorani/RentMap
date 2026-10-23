@@ -11,6 +11,7 @@ import {
   readReply,
   reviewFields,
   stepOnePrompt,
+  stepTwoPrompt,
 } from "../public/lib/add-listing.mjs";
 import { TRACKER_COLUMNS } from "../public/lib/columns.mjs";
 
@@ -76,10 +77,18 @@ test("a bare JSON object with no block also reads", () => {
   assert.equal(readReply('{"rent": 20000, "locality": null}').ok, true);
 });
 
+test("the step 2 prompt is the step 1 prompt with the page data as its first line", () => {
+  const one = stepOnePrompt(LINK).split("\n");
+  const two = stepTwoPrompt('{"Prop_Id":"M93900012"}').split("\n");
+  assert.equal(two[0], 'Here is the listing page data: {"Prop_Id":"M93900012"}');
+  assert.deepEqual(two.slice(1), one.slice(1));
+});
+
 test("a could_not_read reply fails with a clear message", () => {
   assert.deepEqual(readReply('```json\n{"error": "could_not_read"}\n```'), {
     ok: false,
     error: "Claude could not read the listing page.",
+    unread: true,
   });
   assert.equal(readReply('{"error": "could_not_read"}').ok, false);
 });
@@ -88,6 +97,7 @@ test("a reply with no rent and no locality fails", () => {
   const read = readReply('```json\n{"society": "Ahad", "rent": null, "locality": " "}\n```');
   assert.equal(read.ok, false);
   assert.match(read.error, /no rent and no locality/);
+  assert.equal(read.unread, true);
   // One of the two is enough.
   assert.equal(readReply('{"rent": null, "locality": "HSR Layout"}').ok, true);
   assert.equal(readReply('{"rent": 0, "locality": null}').ok, true);
@@ -98,6 +108,8 @@ test("a reply with no JSON, or JSON that is not an object, fails", () => {
     const read = readReply(text);
     assert.equal(read.ok, false, text);
     assert.match(read.error, /no JSON/);
+    // A paste with no JSON is a paste mistake, so it does not open the bookmarklet step.
+    assert.equal(read.unread, undefined, text);
   }
 });
 

@@ -2,16 +2,20 @@
 // It serves the page from public/ on http://localhost and opens it in Chrome.
 // Pass --no-open to skip opening Chrome.
 // POST /api/geocode finds a map spot. See geocoder.js.
+// POST /api/local-claude runs claude -p for "Ask my local Claude". See local-claude.js.
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { createGeocoder } = require("./geocoder.js");
+const { askLocalClaude } = require("./local-claude.js");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const CONFIG_FILE = path.join(__dirname, "config.json");
 const DEFAULT_PORT = 8790;
 const MAX_BODY_BYTES = 10_000;
+// A step 2 prompt holds the listing page text. A long page has about 11,000 characters.
+const MAX_PROMPT_BYTES = 200_000;
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -67,17 +71,17 @@ function isLocalHost(hostHeader) {
   return name === "localhost" || name === "127.0.0.1" || name === "[::1]";
 }
 
-function readJsonBody(req) {
+function readJsonBody(req, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
     // A body that is too big is read to the end and dropped, so the reply still reaches the page.
     req.on("data", (chunk) => {
       size += chunk.length;
-      if (size <= MAX_BODY_BYTES) chunks.push(chunk);
+      if (size <= maxBytes) chunks.push(chunk);
     });
     req.on("end", () => {
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         reject(new Error("The request is too big."));
         return;
       }
@@ -115,20 +119,63 @@ async function geocodeRoute(req, res, config, geocoder) {
   }
 }
 
-function createServer(config, { geocoder = createGeocoder() } = {}) {
+// The reply keys live in the page module, so the schema comes from there. It is an ES module, so it loads with import().
+function loadReplySchema() {
+  return import("./public/lib/add-listing.mjs").then((m) => m.replySchema());
+}
+
+// One run at a time. Each run can cost up to $0.10, so a second click waits for the first to end.
+function localClaudeRoute(runClaude) {
+  let running = false;
+  return async (req, res) => {
+    let body;
+    try {
+      body = await readJsonBody(req, MAX_PROMPT_BYTES);
+    } catch (err) {
+      sendJson(res, 400, { ok: false, error: err.message });
+      return;
+    }
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    if (!prompt) {
+      sendJson(res, 400, { ok: false, error: "Paste the text the bookmarklet copied." });
+      return;
+    }
+    if (running) {
+      sendJson(res, 409, { ok: false, error: "Local Claude is still working on the last one. Wait for it to end." });
+      return;
+    }
+    running = true;
+    try {
+      const { status, body: reply } = await askLocalClaude(prompt, { schema: await loadReplySchema(), run: runClaude });
+      sendJson(res, status, reply);
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    } finally {
+      running = false;
+    }
+  };
+}
+
+// A cross-site HTML form cannot send application/json, so it cannot reach a POST route.
+function isJson(req) {
+  return /^application\/json\b/i.test(req.headers["content-type"] || "");
+}
+
+function createServer(config, { geocoder = createGeocoder(), runClaude } = {}) {
+  const localClaude = localClaudeRoute(runClaude);
   return http.createServer((req, res) => {
     if (!isLocalHost(req.headers.host)) {
       res.writeHead(403).end();
       return;
     }
     const urlPath = new URL(req.url, "http://localhost").pathname;
-    if (req.method === "POST" && urlPath === "/api/geocode") {
-      // A cross-site HTML form cannot send application/json, so it cannot use the geocoder.
-      if (!/^application\/json\b/i.test(req.headers["content-type"] || "")) {
+    if (req.method === "POST" && (urlPath === "/api/geocode" || urlPath === "/api/local-claude")) {
+      if (!isJson(req)) {
         res.writeHead(415).end();
         return;
       }
-      geocodeRoute(req, res, config, geocoder);
+      if (urlPath === "/api/geocode") geocodeRoute(req, res, config, geocoder);
+      else localClaude(req, res);
       return;
     }
     if (req.method !== "GET" && req.method !== "HEAD") {
