@@ -7,7 +7,7 @@ import { TRACKER_COLUMNS, PLACES_COLUMNS, SETTINGS_COLUMNS, STATUSES } from "../
 import { ALREADY_ON_MAP, linkKey } from "../public/lib/same-listing.mjs";
 import { CLASH, ITEM_COLUMNS, ROW_GONE, addItem, removeItem } from "../public/lib/our-take.mjs";
 import { EDIT_COLUMNS, LOCKED_COLUMNS, OUR_TAKE_COLUMNS } from "../public/lib/edit-listing.mjs";
-import { driveFileId, driveLink } from "../public/lib/photos.mjs";
+import { FILE_ID, PHOTO_COLUMN, driveFileId, driveLink } from "../public/lib/photos.mjs";
 
 const code = readFileSync(new URL("../apps-script/Code.gs", import.meta.url), "utf8");
 
@@ -100,9 +100,14 @@ function fakeDrive(log) {
       sharing: null,
       getId: () => id,
       getBlob: () => blob,
+      trashed: false,
       setSharing(access, permission) {
         log.push("drive setSharing");
+        if (drive.blockSharing) throw new Error("Sharing is off for this domain.");
         file.sharing = [access, permission];
+      },
+      setTrashed(value) {
+        file.trashed = value;
       },
       getParents() {
         const left = [parent];
@@ -833,4 +838,21 @@ test("getPhoto returns no file outside the Photos folder, and refuses a bad id",
   assert.deepEqual(post(context, { action: "getPhoto", fileId: "F999999999999999" }), notHere);
   assert.deepEqual(post(context, { action: "getPhoto", fileId: "../x" }), { ok: false, error: "Send a Drive file id." });
   assert.deepEqual(post(context, { action: "getPhoto" }), { ok: false, error: "Send a Drive file id." });
+});
+
+test("uploadPhoto bins the photo and says why when Drive will not share it", () => {
+  const { context, drive } = photoScript();
+  drive.drive.blockSharing = true;
+  assert.deepEqual(post(context, { action: "uploadPhoto", id: "L-abc", data: JPEG }), {
+    ok: false,
+    error: "Drive would not share the photo as anyone with the link can view: Sharing is off for this domain.",
+  });
+  const [file] = drive.files.values();
+  assert.equal(file.trashed, true);
+});
+
+test("the script's file id pattern and Photos column match the page's", () => {
+  const { context } = runScript([]);
+  assert.equal(vm.runInContext("FILE_ID.source", context), FILE_ID.source);
+  assert.equal(vm.runInContext("PHOTO_COLUMN", context), PHOTO_COLUMN);
 });

@@ -342,7 +342,7 @@ Source: [Find a free way to turn an Indian address into a map spot](.scratch/ren
 - To show a Drive photo, the page uses `https://drive.google.com/thumbnail?id=<ID>&sz=w1600`. Google does not document this URL. Keep a fallback: a script call that returns the photo as base64, shown as a `data:` URL and cached in the browser.
 
 - **Built (ticket 10).** The page code is `public/lib/photos.mjs` and the Overview tab in `public/app.mjs`. The Apps Script actions are `uploadPhoto` and `getPhoto`.
-  - `uploadPhoto` takes `{ id, data }`, where data is the base64 JPEG. It refuses data that is not base64, not a JPEG, or over 5 MB, and a gone row. It checks the row before it writes to Drive. It replies `{ "ok": true, "fileId": <id> }`.
+  - `uploadPhoto` takes `{ id, data }`, where data is the base64 JPEG. It refuses data that is not base64, not a JPEG, or over 5 MB, and a gone row. It checks the row before it writes to Drive. It replies `{ "ok": true, "fileId": <id> }`. If Drive will not share the file, for example in a Workspace domain that blocks link sharing, the script moves the file to the bin and says why.
   - The page then sends `editList` with column Photos and `add: "https://drive.google.com/file/d/<ID>/view"`. A Photos add must be a link in that form. A Photos remove takes any link, like a site link.
   - The Drive folder is the one in the Photos folder row of the Settings tab. The row holds the folder link or the bare id.
   - `getPhoto` takes `{ fileId }` and replies `{ "ok": true, "mimeType", "data" }`. It returns only a file in the Photos folder. Anyone with the `/exec` URL can call it, and the script runs as the sheet owner, so it must not return the owner's other files.

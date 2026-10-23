@@ -44,6 +44,7 @@ import {
 } from "/lib/details.mjs";
 import { cityFrom, distancesFor, placesFromRows } from "/lib/places.mjs";
 import {
+  PHOTO_COLUMN,
   PHOTO_QUALITY,
   PHOTO_TYPE,
   base64Of,
@@ -451,7 +452,7 @@ function photoSection(listing, detail) {
     frame.append(photoImg(link, frame));
     if (take.canSave) {
       const remove = takeButton("×", `photo-remove-${index}`, take, () =>
-        sendEdit({ action: "editList", id: listing.row["Listing id"], column: "Photos", remove: link }),
+        sendEdit({ action: "editList", id: listing.row["Listing id"], column: PHOTO_COLUMN, remove: link }),
       );
       remove.className = "take-remove photo-remove";
       remove.setAttribute("aria-label", `Remove photo ${index + 1}. A file in Drive stays in Drive.`);
@@ -706,7 +707,7 @@ function editFormPanel(listing, detail, take) {
       const cell = plainCell(field);
       let why = "Change it on the Our take tab";
       if (LOCKED_COLUMNS.includes(field.column)) why = "Locked";
-      else if (field.column === "Photos") why = "Change it on the Overview tab";
+      else if (field.column === PHOTO_COLUMN) why = "Change it on the Overview tab";
       cell.append(el("span", "edit-locked", why));
       return cell;
     }
@@ -1101,7 +1102,7 @@ async function uploadPhotos(files) {
       if (state.detail === detail) renderDetails();
       return;
     }
-    const added = await sendEdit({ action: "editList", id, column: "Photos", add: driveLink(reply.fileId) }, () => {}, detail);
+    const added = await sendEdit({ action: "editList", id, column: PHOTO_COLUMN, add: driveLink(reply.fileId) }, () => {}, detail);
     if (!added?.ok) return;
   }
   if (files.length > 1) {

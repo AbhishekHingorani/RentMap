@@ -70,7 +70,7 @@ var ITEM_COLUMNS = ["Pros", "Cons"];
 // editList takes Photos too. An added photo must be the Drive link of an upload, from "Assumptions" in SPEC.md.
 var PHOTO_COLUMN = "Photos";
 var DRIVE_LINK = /^https:\/\/drive\.google\.com\/file\/d\/[A-Za-z0-9_-]{10,}\/view$/;
-// A Drive file id. public/lib/photos.mjs checks the same pattern.
+// A Drive file id. This copies FILE_ID in public/lib/photos.mjs. Keep the two the same.
 var FILE_ID = /^[A-Za-z0-9_-]{10,}$/;
 // The page sends a JPEG of about 1600 px on the long side, which is well under 1 MB.
 var MAX_PHOTO_BYTES = 5 * 1024 * 1024;
@@ -94,14 +94,18 @@ function setup() {
 
 // An empty Photos folder row gets a new Drive folder. A row that holds a link keeps it.
 function makePhotosFolder(sheet) {
-  var values = sheet.getDataRange().getValues();
+  var r = photosFolderRow(sheet.getDataRange().getValues());
+  if (r === -1 || String(sheet.getRange(r + 1, 2, 1, 1).getValues()[0][0]).trim()) return;
+  var folder = DriveApp.createFolder(PHOTOS_FOLDER_NAME);
+  sheet.getRange(r + 1, 2, 1, 1).setValues([[folder.getUrl()]]);
+}
+
+// The index of the Photos folder row in the Settings values, or -1.
+function photosFolderRow(values) {
   for (var r = 1; r < values.length; r++) {
-    if (String(values[r][0]).trim() !== PHOTOS_FOLDER_SETTING) continue;
-    if (String(values[r][1]).trim()) return;
-    var folder = DriveApp.createFolder(PHOTOS_FOLDER_NAME);
-    sheet.getRange(r + 1, 2, 1, 1).setValues([[folder.getUrl()]]);
-    return;
+    if (String(values[r][0]).trim() === PHOTOS_FOLDER_SETTING) return r;
   }
+  return -1;
 }
 
 // A row whose Setting cell already holds the name is kept, whatever its value.
@@ -389,7 +393,13 @@ function uploadPhoto(id, data) {
   if (!found) return { ok: false, error: "row_gone" };
   var name = String(found.listing["Listing id"]).trim() + " " + new Date().toISOString() + ".jpg";
   var file = photosFolder().createFile(Utilities.newBlob(bytes, "image/jpeg", name));
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (err) {
+    // A Workspace domain can block "anyone with the link". The photo would belong to no listing, so bin it.
+    file.setTrashed(true);
+    return { ok: false, error: "Drive would not share the photo as anyone with the link can view: " + String(err.message || err) };
+  }
   return { ok: true, fileId: file.getId() };
 }
 
@@ -416,11 +426,11 @@ function getPhoto(fileId) {
 
 // The Drive folder in the Photos folder row of the Settings tab. The row holds the folder link or its id.
 function photosFolder() {
-  var settings = readTab(SpreadsheetApp.getActiveSpreadsheet(), "Settings");
-  var value = "";
-  settings.forEach(function (row) {
-    if (String(row.Setting).trim() === PHOTOS_FOLDER_SETTING) value = String(row.Value).trim();
-  });
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Settings");
+  if (!sheet) throw new Error("missing tab: Settings. Run setup in the Apps Script editor.");
+  var values = sheet.getDataRange().getValues();
+  var r = photosFolderRow(values);
+  var value = r === -1 ? "" : String(values[r][1] === undefined ? "" : values[r][1]).trim();
   var match = value.match(/\/folders\/([A-Za-z0-9_-]+)/);
   var folderId = match ? match[1] : value;
   if (!folderId) throw new Error("No Photos folder in the Settings tab. Run setup in the Apps Script editor.");

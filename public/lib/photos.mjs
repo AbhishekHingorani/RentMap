@@ -5,9 +5,10 @@
 export const PHOTO_LONG_SIDE = 1600;
 export const PHOTO_QUALITY = 0.8;
 export const PHOTO_TYPE = "image/jpeg";
+export const PHOTO_COLUMN = "Photos";
 
-// A Drive file id is letters, digits, "-" and "_". Code.gs checks the same pattern.
-const FILE_ID = /^[A-Za-z0-9_-]{10,}$/;
+// A Drive file id is letters, digits, "-" and "_". Code.gs copies this pattern, and a test checks they match.
+export const FILE_ID = /^[A-Za-z0-9_-]{10,}$/;
 
 // The Photos cell holds the full Drive link of an upload, from "Assumptions" in SPEC.md.
 export function driveLink(fileId) {
