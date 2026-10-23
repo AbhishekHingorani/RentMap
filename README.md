@@ -35,6 +35,14 @@ The geocoder looks inside the city in the City row of the Settings tab. `setup` 
 
 To turn the geocoder off, set `"geocoding": false` in `config.json` and start the app again. The app then cannot find a map spot for a new place.
 
+## Add a listing by link
+
+Click "+ Add listing" above the left column. Paste the listing link. The app shows a prompt with the link in it. Copy the prompt into a new chat on Claude web, then paste Claude's whole reply back. The app reads the ```json block and fills a review form. A value it fixed, like "2 BHK" to 2BHK, is yellow. Check the form and click Save. Nothing goes into the sheet before Save.
+
+If the reply has no Lat and Long, the app finds the map spot from the society and the locality. If Save fails, click Save again. The browser made the Listing id, so the sheet does not get a second row.
+
+After you paste a new `Code.gs`, edit the deployment and pick a new version, or the `addListing` call fails with "unknown action".
+
 ## Test with a few rows
 
 Open `apps-script/test-rows.tsv`, copy all 3 lines, click cell A2 of the Tracker tab, and paste. Each row has Lat and Long, so each one gets a pin. Reload the page.

@@ -981,3 +981,222 @@ button.place-open:hover {
   line-height: 1;
   color: oklch(15% 0 0);
 }
+
+/* "+ Add listing" above the left column */
+.side-actions {
+  padding: 0.625rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.side-actions:has(> [hidden]:only-child) {
+  display: none;
+}
+
+.add-open,
+.add-primary {
+  padding: 0.4375rem 0.875rem;
+  border: 0;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--shell-ink);
+  background: var(--shell);
+  cursor: pointer;
+}
+
+.add-open:hover,
+.add-primary:hover {
+  background: oklch(36% 0.05 165);
+}
+
+.add-primary {
+  justify-self: start;
+}
+
+.add-primary:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.add-secondary {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid oklch(70% 0.015 175);
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.add-secondary:hover {
+  border-color: var(--ink-soft);
+}
+
+/* The add steps, stacked in the left column */
+.add-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem 1.25rem 2rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.add-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.add-head h2 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.add-steps {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.add-step {
+  display: grid;
+  gap: 0.625rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.add-step--done {
+  gap: 0.25rem;
+  padding-block: 0.5rem;
+}
+
+/* A later step is greyed out until the steps before it are done. */
+.add-step--later {
+  background: transparent;
+  color: var(--ink-soft);
+  opacity: 0.6;
+}
+
+.add-step-title {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.add-step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  color: var(--shell-ink);
+  background: var(--shell);
+}
+
+.add-step--later .add-step-number {
+  color: var(--ink-soft);
+  background: var(--line);
+}
+
+.add-step-line {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.add-step-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+
+.add-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.add-form label {
+  display: grid;
+  gap: 0.1875rem;
+  font-weight: 500;
+}
+
+.add-form input,
+.add-form textarea,
+.add-prompt {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid oklch(70% 0.015 175);
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.add-form textarea,
+.add-prompt {
+  resize: vertical;
+}
+
+.add-prompt {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.75rem;
+  background: var(--ground);
+}
+
+.add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.add-link {
+  font-weight: 500;
+  color: var(--focus);
+}
+
+.add-hint {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.add-error {
+  margin: 0;
+  color: var(--error);
+}
+
+/* A value the app fixed, like "2 BHK" to 2BHK, is marked yellow so the person checks it. */
+.add-field--fixed input,
+.add-field--fixed textarea {
+  border-color: oklch(72% 0.13 85);
+  background: oklch(95% 0.07 95);
+}
+
+.add-fixed-note {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: oklch(42% 0.08 75);
+}
+
+.details > .add-error {
+  margin-bottom: 0.75rem;
+}

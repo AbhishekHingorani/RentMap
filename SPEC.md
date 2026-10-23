@@ -190,6 +190,14 @@ The add steps show in the left column, stacked. The current step is open. A done
 7. The app shows a review form with the values filled in. A value in the wrong format (like "2 BHK", or "38,999" as text) is fixed and marked yellow. The person fixes any field and clicks Save. Nothing is written before Save.
 8. If lat and long are `null`, the app finds the map spot from society plus locality.
 
+- **Built (ticket 05).** The page code is `public/lib/add-listing.mjs` and the add steps in `public/app.mjs`. The Apps Script action is `addListing`.
+  - The step 3 failure shows a message for now. Ticket 07 adds the bookmarklet step.
+  - The review form fixes Configuration ("2 BHK" to 2BHK, "5 BHK" to 4BHK+), money and other numbers ("38,999" to 38999), Listed by, Furnishing, Parking and Lift. A value it cannot fix stays as it came, unmarked.
+  - When the reply gives lat and long, the Pin precision is building, because the listing page puts the pin on the home.
+  - The Listing id is `L-` plus a random UUID. Date added is the person's local date, as YYYY-MM-DD.
+  - A listing with no map spot still saves. Its card says "No map spot yet", and its details say why.
+  - Overall rating is rounded to 2 decimals. Total monthly cost is rent alone when Maintenance is empty, and empty when Rent is empty.
+
 ### Claude's reply
 
 Claude replies with one JSON object in a ```json block. The keys are fixed. The app maps each key to its Tracker column. A value the page does not show is `null`.

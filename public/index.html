@@ -25,6 +25,9 @@
           <h1>Rental map</h1>
           <p class="who" id="who" hidden></p>
         </header>
+        <div class="side-actions">
+          <button class="add-open" id="add-open" type="button" hidden>+ Add listing</button>
+        </div>
         <div class="tab-bar side-tabs" id="side-tabs" role="tablist" aria-label="Left column">
           <button class="tab" id="side-tab-listings" type="button" role="tab" data-tab="listings" aria-controls="list-view" aria-selected="true">Listings</button>
           <button class="tab" id="side-tab-places" type="button" role="tab" data-tab="places" aria-controls="places-view" aria-selected="false" tabindex="-1">Places</button>
@@ -76,6 +79,13 @@
             <p class="place-note" id="place-note" aria-live="polite"></p>
           </form>
         </div>
+        <section class="add-view" id="add-view" aria-labelledby="add-title" hidden>
+          <div class="add-head">
+            <h2 id="add-title">Add a listing</h2>
+            <button class="back-link" id="add-close" type="button">Cancel</button>
+          </div>
+          <ol class="add-steps" id="add-steps"></ol>
+        </section>
       </section>
       <div class="map" id="map" aria-label="Map of listings"></div>
     </main>

@@ -208,3 +208,126 @@ test("addPlace refuses a place with no name, no map spot or an unknown Pin preci
   }
   assert.equal(places.cells.length, 1);
 });
+
+// A new listing row as the page sends it. The page never sends the two worked-out columns.
+function newRow(over = {}) {
+  return {
+    "Listing id": "L-abc",
+    "Society / building name": "Ahad Excellencia",
+    Locality: "Chikkanayakanahalli",
+    Configuration: "2BHK",
+    Status: "To call",
+    "Rent (₹/month)": 38999,
+    "Maintenance (₹/month)": 3000,
+    Photos: "https://imagecdn.99acres.com/a.jpg; https://imagecdn.99acres.com/b.jpg",
+    "Listing link": "https://www.99acres.com/flat-spid-M93900012",
+    Lat: 12.9,
+    Long: 77.7,
+    "Pin precision": "society",
+    "Date added": "2026-10-23",
+    "Added by": "Asha",
+    ...over,
+  };
+}
+
+function cellOf(sheet, rowIndex, column) {
+  return sheet.cells[rowIndex][sheet.cells[0].indexOf(column)];
+}
+
+test("addListing writes the row by header inside the lock, with Total monthly cost", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context, log } = runScript([tracker]);
+
+  const reply = post(context, { action: "addListing", listing: newRow() });
+
+  assert.equal(reply.ok, true);
+  assert.equal(tracker.cells.length, 2);
+  assert.equal(tracker.cells[1].length, 40);
+  assert.equal(cellOf(tracker, 1, "Listing id"), "L-abc");
+  assert.equal(cellOf(tracker, 1, "Status"), "To call");
+  assert.equal(cellOf(tracker, 1, "Added by"), "Asha");
+  assert.equal(cellOf(tracker, 1, "Total monthly cost"), 41999);
+  assert.equal(cellOf(tracker, 1, "Overall rating"), "");
+  // Site photo links stay as the page sent them.
+  assert.equal(cellOf(tracker, 1, "Photos"), "https://imagecdn.99acres.com/a.jpg; https://imagecdn.99acres.com/b.jpg");
+  assert.equal(reply.listing["Total monthly cost"], 41999);
+  assert.equal(reply.listing["Listing id"], "L-abc");
+  assert.deepEqual(log, ["wait 20000", "flush", "release"]);
+});
+
+test("addListing writes by the row 1 headers, so a moved column gets the right value", () => {
+  const headers = [...TRACKER_COLUMNS].reverse();
+  const tracker = fakeSheet("Tracker", [headers]);
+  const { context } = runScript([tracker]);
+  post(context, { action: "addListing", listing: newRow() });
+  assert.equal(tracker.cells[1][0], "Asha");
+  assert.equal(cellOf(tracker, 1, "Total monthly cost"), 41999);
+});
+
+test("a retried addListing with the same Listing id adds no second row", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context } = runScript([tracker]);
+  post(context, { action: "addListing", listing: newRow() });
+  const again = post(context, { action: "addListing", listing: newRow({ "Rent (₹/month)": 1 }) });
+  assert.equal(again.ok, true);
+  assert.equal(tracker.cells.length, 2);
+  assert.equal(again.listing["Rent (₹/month)"], 38999);
+});
+
+test("the page cannot set Total monthly cost or Overall rating", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context } = runScript([tracker]);
+  post(context, { action: "addListing", listing: newRow({ "Total monthly cost": 5, "Overall rating": 5 }) });
+  assert.equal(cellOf(tracker, 1, "Total monthly cost"), 41999);
+  assert.equal(cellOf(tracker, 1, "Overall rating"), "");
+});
+
+test("Total monthly cost is rent alone when maintenance is empty, and empty when rent is empty", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context } = runScript([tracker]);
+  post(context, { action: "addListing", listing: newRow({ "Listing id": "a", "Maintenance (₹/month)": "" }) });
+  post(context, { action: "addListing", listing: newRow({ "Listing id": "b", "Rent (₹/month)": "" }) });
+  assert.equal(cellOf(tracker, 1, "Total monthly cost"), 38999);
+  assert.equal(cellOf(tracker, 2, "Total monthly cost"), "");
+});
+
+// Ratings come later, from the Our take tab. The script works Overall rating out from the cells after any write.
+test("Overall rating with Safety 4 and Location 2 filled and the other 3 empty is 3", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context } = runScript([tracker]);
+  post(context, { action: "addListing", listing: newRow({ Safety: 4, Location: 2 }) });
+  assert.equal(cellOf(tracker, 1, "Overall rating"), 3);
+});
+
+test("Overall rating with all 5 ratings empty is empty", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context } = runScript([tracker]);
+  const reply = post(context, { action: "addListing", listing: newRow() });
+  assert.equal(cellOf(tracker, 1, "Overall rating"), "");
+  assert.equal(reply.listing["Overall rating"], "");
+});
+
+test("Overall rating reads hand-typed ratings and rounds to 2 decimals", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context } = runScript([tracker]);
+  post(context, { action: "addListing", listing: newRow({ Safety: "4", "Water supply": 5, Condition: 5 }) });
+  assert.equal(cellOf(tracker, 1, "Overall rating"), 4.67);
+});
+
+test("addListing returns busy when the lock does not come, and writes nothing", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context, log } = runScript([tracker], { busy: true });
+  assert.deepEqual(post(context, { action: "addListing", listing: newRow() }), { ok: false, error: "busy" });
+  assert.equal(tracker.cells.length, 1);
+  assert.deepEqual(log, ["wait 20000"]);
+});
+
+test("addListing refuses a listing with no Listing id", () => {
+  const tracker = fakeSheet("Tracker", [TRACKER_COLUMNS]);
+  const { context } = runScript([tracker]);
+  assert.deepEqual(post(context, { action: "addListing", listing: newRow({ "Listing id": " " }) }), {
+    ok: false,
+    error: "A new listing needs a Listing id.",
+  });
+  assert.equal(tracker.cells.length, 1);
+});

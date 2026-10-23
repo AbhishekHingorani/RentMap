@@ -53,6 +53,9 @@ var SETTINGS_ROWS = [
   ["City", "Bangalore"],
 ];
 var PIN_PRECISIONS = ["building", "society", "locality"];
+var RATING_COLUMNS = ["Safety", "Water supply", "Location", "Condition", "Natural light"];
+// The script works these out from the other cells. The page never writes them.
+var WORKED_OUT_COLUMNS = ["Total monthly cost", "Overall rating"];
 var LOCK_WAIT_MS = 20000;
 
 // Run this once from the Apps Script editor. It adds any missing tab and writes its headers.
@@ -92,6 +95,8 @@ function doPost(e) {
       reply = load();
     } else if (body.action === "addPlace") {
       reply = addPlace(body.place, body.addedBy);
+    } else if (body.action === "addListing") {
+      reply = addListing(body.listing);
     } else {
       reply = { ok: false, error: "unknown action: " + body.action };
     }
@@ -172,6 +177,75 @@ function addPlace(place, addedBy) {
     sheet.getRange(sheet.getLastRow() + 1, 1, 1, row.length).setValues([row]);
     return { ok: true, place: values };
   });
+}
+
+// listing: the new Tracker row keyed by column. The page made the Listing id and filled Status,
+// Listing link, Date added and Added by. A retried call with the same Listing id adds no second row.
+function addListing(listing) {
+  listing = listing || {};
+  var id = String(listing["Listing id"] || "").trim();
+  if (!id) return { ok: false, error: "A new listing needs a Listing id." };
+  return withLock(function () {
+    var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    var saved = readTab(spreadsheet, "Tracker");
+    for (var i = 0; i < saved.length; i++) {
+      if (String(saved[i]["Listing id"]).trim() === id) return { ok: true, listing: saved[i] };
+    }
+    var sheet = spreadsheet.getSheetByName("Tracker");
+    var headers = sheet.getDataRange().getValues()[0];
+    var row = headers.map(function (header) {
+      if (header === "Listing id") return id;
+      if (WORKED_OUT_COLUMNS.indexOf(header) !== -1) return "";
+      return Object.prototype.hasOwnProperty.call(listing, header) ? listing[header] : "";
+    });
+    var rowNumber = sheet.getLastRow() + 1;
+    sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
+    return { ok: true, listing: writeWorkedOut(sheet, rowNumber, headers) };
+  });
+}
+
+// Run inside the lock after every write to a listing. It reads the row as it is in the sheet now,
+// writes Total monthly cost and Overall rating, and returns the row keyed by header.
+// Total monthly cost is rent plus maintenance, or rent alone when maintenance is empty.
+// Overall rating is the average of the filled ratings only, and empty when none is filled.
+function writeWorkedOut(sheet, rowNumber, headers) {
+  var cells = sheet.getDataRange().getValues()[rowNumber - 1];
+  var byHeader = {};
+  headers.forEach(function (header, c) {
+    if (header) byHeader[header] = cells[c] === undefined ? "" : cells[c];
+  });
+
+  var rent = toNumber(byHeader["Rent (₹/month)"]);
+  var maintenance = toNumber(byHeader["Maintenance (₹/month)"]);
+  var total = rent === null ? "" : rent + (maintenance === null ? 0 : maintenance);
+
+  var ratings = RATING_COLUMNS.map(function (column) {
+    return toNumber(byHeader[column]);
+  }).filter(function (n) {
+    return n !== null;
+  });
+  var sum = ratings.reduce(function (a, b) {
+    return a + b;
+  }, 0);
+  var overall = ratings.length ? Math.round((sum / ratings.length) * 100) / 100 : "";
+
+  var worked = { "Total monthly cost": total, "Overall rating": overall };
+  WORKED_OUT_COLUMNS.forEach(function (column) {
+    var c = headers.indexOf(column);
+    if (c !== -1) sheet.getRange(rowNumber, c + 1, 1, 1).setValues([[worked[column]]]);
+    byHeader[column] = worked[column];
+  });
+  return byHeader;
+}
+
+// A hand-typed cell can hold "38,999" or "₹38,999" as text. An empty cell is null.
+function toNumber(value) {
+  if (typeof value === "number") return isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  var cleaned = value.replace(/[₹,\s]/g, "");
+  if (cleaned === "") return null;
+  var n = Number(cleaned);
+  return isFinite(n) ? n : null;
 }
 
 function sameText(a, b) {

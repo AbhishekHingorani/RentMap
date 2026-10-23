@@ -1,6 +1,7 @@
 // The page: asks the person's name, loads the sheet in one Apps Script call, and shows cards and pins.
 // A click on a card or a pin opens the listing details. The filter bar narrows the list and the map.
 // The Places tab lists the places, like an office, and adds one. Each place shows on the map as a black star.
+// "+ Add listing" opens the add steps in the left column: paste a link, ask Claude web, check the values and save.
 import {
   NOT_GIVEN,
   formatRating,
@@ -25,6 +26,15 @@ import {
   photoLinks,
 } from "/lib/details.mjs";
 import { cityFrom, distancesFor, placesFromRows } from "/lib/places.mjs";
+import {
+  dateText,
+  listingLink,
+  newListingRow,
+  pageSpot,
+  readReply,
+  reviewFields,
+  stepOnePrompt,
+} from "/lib/add-listing.mjs";
 
 const NAME_KEY = "rentalMap.personName";
 
@@ -39,6 +49,10 @@ const placesViewEl = document.getElementById("places-view");
 const placeListEl = document.getElementById("place-list");
 const placeFormEl = document.getElementById("place-form");
 const placeNoteEl = document.getElementById("place-note");
+const sideTabsEl = document.getElementById("side-tabs");
+const addOpenEl = document.getElementById("add-open");
+const addViewEl = document.getElementById("add-view");
+const addStepsEl = document.getElementById("add-steps");
 
 const map = L.map("map", { zoomControl: true }).setView([22.5, 79], 5);
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -142,6 +156,8 @@ const state = {
   markers: new Map(),
   roughCircle: null,
   listScroll: 0,
+  // The add steps, while they are open. null when they are closed.
+  add: null,
 };
 
 function statusKey(status) {
@@ -495,6 +511,8 @@ function markPin(id, picked) {
 function openDetails(id) {
   const listing = listingById(id);
   if (!listing) return;
+  // A pin click can come while the add steps are open. What the person typed stays until they open the steps again.
+  if (!addViewEl.hidden) hideAddSteps();
   // A pin click can come while the Places tab is open. The details belong to the Listings tab.
   if (!placesViewEl.hidden) pickSideTab("listings", false);
   if (state.pickedId === null) state.listScroll = listEl.scrollTop;
@@ -642,6 +660,287 @@ async function addPlace(event) {
   }
 }
 
+// --- Add a listing by link ---
+
+const ADD_STEPS = [
+  { title: "Paste the listing link", body: linkStep, summary: (add) => add.link },
+  { title: "Ask Claude web", body: claudeStep, summary: (add) => add.fields.find((f) => f.key === "society")?.value || "Reply read" },
+  { title: "Check and save", body: reviewStep },
+];
+
+function freshAdd() {
+  return { step: 0, link: "", replyText: "", fields: [], id: null, spot: undefined, error: "", busy: false };
+}
+
+function openAddSteps() {
+  if (state.pickedId !== null) closeDetails();
+  pickSideTab("listings", false);
+  state.add ??= freshAdd();
+  listViewEl.hidden = true;
+  sideTabsEl.hidden = true;
+  addOpenEl.hidden = true;
+  addViewEl.hidden = false;
+  renderAddSteps();
+}
+
+// Hides the steps but keeps what the person typed, so "+ Add listing" picks up where they left.
+function hideAddSteps() {
+  addViewEl.hidden = true;
+  sideTabsEl.hidden = false;
+  addOpenEl.hidden = false;
+  listViewEl.hidden = state.pickedId !== null;
+}
+
+function closeAddSteps() {
+  state.add = null;
+  hideAddSteps();
+  addOpenEl.focus();
+}
+
+function goToStep(index) {
+  state.add.step = index;
+  state.add.error = "";
+  renderAddSteps();
+}
+
+// The steps are stacked. The current step is open, a done step folds to one line, and later steps are greyed out.
+function renderAddSteps() {
+  const add = state.add;
+  addStepsEl.replaceChildren(
+    ...ADD_STEPS.map((step, index) => {
+      const item = el("li", "add-step");
+      const title = el("h3", "add-step-title");
+      title.append(el("span", "add-step-number", String(index + 1)), el("span", "", step.title));
+      item.append(title);
+      if (index < add.step) {
+        item.classList.add("add-step--done");
+        const line = el("div", "add-step-line");
+        const change = el("button", "back-link", "Change");
+        change.type = "button";
+        change.setAttribute("aria-label", `Change: ${step.title}`);
+        change.addEventListener("click", () => goToStep(index));
+        line.append(el("span", "add-step-summary", step.summary(add)), change);
+        item.append(line);
+      } else if (index === add.step) {
+        item.classList.add("add-step--open");
+        item.setAttribute("aria-current", "step");
+        item.append(...step.body(add));
+        if (add.error) {
+          const error = el("p", "add-error", add.error);
+          error.setAttribute("role", "alert");
+          item.append(error);
+        }
+      } else {
+        item.classList.add("add-step--later");
+      }
+      return item;
+    }),
+  );
+  addStepsEl.querySelector(".add-step--open [data-focus]")?.focus();
+}
+
+function linkStep(add) {
+  const form = el("form", "add-form");
+  // The app checks the link itself, so its message shows in place of the browser's.
+  form.noValidate = true;
+  const label = el("label");
+  const input = el("input");
+  input.name = "link";
+  input.type = "url";
+  input.required = true;
+  input.placeholder = "https://www.99acres.com/...";
+  input.autocomplete = "off";
+  input.value = add.link;
+  input.dataset.focus = "";
+  label.append(el("span", "", "Listing link"), input);
+  const next = el("button", "add-primary", "Next");
+  next.type = "submit";
+  form.append(label, next);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const link = listingLink(input.value);
+    if (!link) {
+      add.error = "Paste a link that starts with https://, like the address of a 99acres page.";
+      renderAddSteps();
+      return;
+    }
+    // A new link is a new listing, so the reply, the values and the Listing id start again.
+    if (link !== add.link) Object.assign(add, { link, replyText: "", fields: [], id: null, spot: undefined });
+    goToStep(1);
+  });
+  return [form];
+}
+
+function claudeStep(add) {
+  const promptBox = el("textarea", "add-prompt");
+  promptBox.readOnly = true;
+  promptBox.rows = 8;
+  promptBox.value = stepOnePrompt(add.link);
+  promptBox.setAttribute("aria-label", "Prompt for Claude web");
+
+  const copy = el("button", "add-secondary", "Copy the prompt");
+  copy.type = "button";
+  copy.dataset.focus = "";
+  const copied = el("span", "add-hint");
+  copied.setAttribute("aria-live", "polite");
+  copy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(promptBox.value);
+      copied.textContent = "Copied.";
+    } catch {
+      promptBox.select();
+      copied.textContent = "Press Cmd+C to copy.";
+    }
+  });
+  const claude = el("a", "add-link", "Open Claude web");
+  claude.href = "https://claude.ai/new";
+  claude.target = "_blank";
+  claude.rel = "noopener noreferrer";
+  const copyRow = el("div", "add-row");
+  copyRow.append(copy, claude, copied);
+
+  const form = el("form", "add-form");
+  const label = el("label");
+  const reply = el("textarea");
+  reply.name = "reply";
+  reply.rows = 6;
+  reply.required = true;
+  reply.placeholder = "Paste all of Claude's reply here";
+  reply.value = add.replyText;
+  label.append(el("span", "", "Claude's reply"), reply);
+  const read = el("button", "add-primary", "Read the reply");
+  read.type = "submit";
+  form.append(label, read);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    add.replyText = reply.value;
+    const result = readReply(reply.value);
+    if (!result.ok) {
+      add.error = `${result.error} Check that Claude opened the right page, or ask again in a new chat.`;
+      renderAddSteps();
+      return;
+    }
+    Object.assign(add, { fields: reviewFields(result.reply), id: null, spot: undefined });
+    goToStep(2);
+  });
+
+  return [el("p", "add-hint", "Copy this prompt into a new chat on Claude web. Then paste Claude's reply below."), promptBox, copyRow, form];
+}
+
+// Long text fields get a box with more room.
+const LONG_FIELDS = new Set(["otherDetails", "photos"]);
+
+function reviewStep(add) {
+  const form = el("form", "add-form add-review");
+  const fixedCount = add.fields.filter((f) => f.fixed).length;
+  form.append(
+    el(
+      "p",
+      "add-hint",
+      fixedCount
+        ? `The app fixed ${fixedCount} ${fixedCount === 1 ? "value" : "values"} in the wrong format. They are marked yellow. Check them and any other field. Nothing is saved until you click Save.`
+        : "Check each field. Nothing is saved until you click Save.",
+    ),
+  );
+  add.fields.forEach((field, index) => {
+    const label = el("label", field.fixed ? "add-field add-field--fixed" : "add-field");
+    const input = el(LONG_FIELDS.has(field.key) ? "textarea" : "input");
+    input.name = field.key;
+    input.value = String(field.value);
+    input.autocomplete = "off";
+    if (index === 0) input.dataset.focus = "";
+    // Keep what the person types, so a "Change" and back does not lose it.
+    input.addEventListener("input", () => {
+      field.value = input.value;
+    });
+    label.append(el("span", "", field.column), input);
+    if (field.fixed) label.append(el("span", "add-fixed-note", "Fixed by the app"));
+    form.append(label);
+  });
+  form.append(el("p", "add-hint", "Lat and Long empty: the app finds the map spot from the society and the locality."));
+  const save = el("button", "add-primary", add.busy ? "Saving…" : "Save");
+  save.type = "submit";
+  save.disabled = add.busy;
+  const note = el("p", "add-hint add-save-note");
+  note.setAttribute("aria-live", "polite");
+  form.append(save, note);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveListing(add);
+  });
+  return [form];
+}
+
+// The map spot for a new listing: the page's own lat and long, or the geocoder from society plus locality.
+// Returns { spot, problem }. A listing with no spot still saves, and its card says "No map spot yet".
+async function spotFor(values) {
+  const given = pageSpot(values);
+  if (given) return { spot: given, problem: "" };
+  if ((await appConfig()).geocoding === false) return { spot: null, problem: "The geocoder is off in config.json." };
+  if (!state.city) return { spot: null, problem: "The Settings tab has no City." };
+  const society = values.society.trim();
+  const locality = values.locality.trim();
+  if (!society && !locality) return { spot: null, problem: "The listing has no society and no locality." };
+  try {
+    const spot = await geocode({ society, locality, city: state.city });
+    return spot ? { spot, problem: "" } : { spot: null, problem: `The geocoder could not find it in ${state.city}.` };
+  } catch (err) {
+    return { spot: null, problem: err.message };
+  }
+}
+
+// Nothing is written before this runs. The Listing id is made once, so a retried Save cannot add a second row.
+async function saveListing(add) {
+  const values = Object.fromEntries(add.fields.map((f) => [f.key, String(f.value)]));
+  add.busy = true;
+  add.error = "";
+  renderAddSteps();
+  const say = (text) => {
+    addStepsEl.querySelector(".add-save-note").textContent = text;
+  };
+  try {
+    add.id ??= `L-${crypto.randomUUID()}`;
+    // The spot is found once per society and locality, so a retried Save does not ask the geocoder again.
+    const spotKey = [values.lat, values.long, values.society, values.locality].join("|");
+    if (add.spot?.key !== spotKey) {
+      say("Finding the map spot…");
+      add.spot = { key: spotKey, ...(await spotFor(values)) };
+    }
+    say("Saving to the sheet…");
+    const row = newListingRow({ id: add.id, values, link: add.link, addedBy: state.name, today: dateText(new Date()), spot: add.spot.spot });
+    let reply;
+    try {
+      reply = await callScript({ action: "addListing", listing: row });
+    } catch (err) {
+      throw new Error(`${err.message} The listing may or may not be saved. Click Save again. It will not add a second row.`);
+    }
+    if (!reply.ok) {
+      throw new Error(reply.error === "busy" ? "The sheet is busy. Click Save again in a moment." : `The Apps Script said: ${reply.error}`);
+    }
+    const [saved] = listingsFromRows([reply.listing]);
+    state.listings = sortByCost([...state.listings.filter((l) => l.id !== saved.id), saved]);
+    const problem = add.spot.problem;
+    closeAddSteps();
+    renderList();
+    openDetails(saved.id);
+    if (!saved.spot) {
+      const warn = el("p", "add-error", `Saved, with no map spot. ${problem}`);
+      warn.setAttribute("role", "status");
+      detailsEl.querySelector(".details-head").after(warn);
+    }
+  } catch (err) {
+    add.busy = false;
+    add.error = err.message;
+    renderAddSteps();
+  }
+}
+
+function setUpAddSteps() {
+  addOpenEl.addEventListener("click", openAddSteps);
+  document.getElementById("add-close").addEventListener("click", closeAddSteps);
+  addOpenEl.hidden = false;
+}
+
 // --- Left column tabs: Listings and Places ---
 
 function pickSideTab(key, focus) {
@@ -695,6 +994,7 @@ async function start() {
     setUpFilters();
     setUpSideTabs();
     setUpPlaceForm();
+    setUpAddSteps();
     renderPlaces();
     renderList();
     const spots = [...state.listings, ...state.places].filter((l) => l.spot).map((l) => l.spot);
