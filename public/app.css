@@ -14,9 +14,9 @@
 }
 
 :root {
-  --ground: oklch(97.5% 0.008 85);
-  --surface: oklch(99.5% 0.004 85);
-  --line: oklch(89% 0.012 85);
+  --ground: oklch(97% 0.006 175);
+  --surface: oklch(99.5% 0.002 175);
+  --line: oklch(89% 0.01 175);
   --ink: oklch(24% 0.02 160);
   --ink-soft: oklch(45% 0.02 160);
   --shell: oklch(30% 0.045 165);
@@ -34,10 +34,10 @@
   --visited-ink: oklch(99% 0 0);
   --shortlisted: oklch(45% 0.11 155);
   --shortlisted-ink: oklch(99% 0 0);
-  --rejected: oklch(86% 0.005 85);
-  --rejected-ink: oklch(35% 0.01 85);
+  --rejected: oklch(86% 0.005 175);
+  --rejected-ink: oklch(35% 0.01 175);
   --unknown: oklch(99% 0 0);
-  --unknown-ink: oklch(30% 0.01 85);
+  --unknown-ink: oklch(30% 0.01 175);
 
   --side-width: 26rem;
   color-scheme: light;
@@ -150,7 +150,7 @@ body {
   aspect-ratio: 4 / 3;
   overflow: hidden;
   border-radius: 4px;
-  background: oklch(93% 0.012 85);
+  background: oklch(93% 0.012 175);
 }
 
 .card-photo img {
@@ -233,7 +233,7 @@ body {
 
 .map {
   min-height: 0;
-  background: oklch(93% 0.01 85);
+  background: oklch(93% 0.01 175);
 }
 
 /* Pin: a price tag whose point sits on the map spot. */
@@ -272,8 +272,8 @@ body {
 .pin.status--visited { border-color: var(--visited); }
 .pin.status--shortlisted { border-color: var(--shortlisted); }
 .pin.status--rejected {
-  border-color: oklch(62% 0.01 85);
-  box-shadow: inset 0 0 0 1px oklch(62% 0.01 85), 0 1px 3px oklch(20% 0.02 160 / 0.35);
+  border-color: oklch(62% 0.01 175);
+  box-shadow: inset 0 0 0 1px oklch(62% 0.01 175), 0 1px 3px oklch(20% 0.02 160 / 0.35);
 }
 .pin.status--unknown { border-color: var(--ink-soft); }
 
@@ -317,7 +317,7 @@ body {
 .name-box input {
   width: 100%;
   padding: 0.5rem 0.625rem;
-  border: 1px solid oklch(70% 0.015 85);
+  border: 1px solid oklch(70% 0.015 175);
   border-radius: 4px;
   font: inherit;
   color: var(--ink);
