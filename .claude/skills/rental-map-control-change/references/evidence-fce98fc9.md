@@ -1,0 +1,1 @@
+assistant: I added the new row, and it works on your screen with a fake sheet. Before it can save to your real sheet, you must update the Apps Script. That is in "What you do now" below.

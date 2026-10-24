@@ -16,6 +16,8 @@ Run the server as a background task. Stop it with `TaskStop`, confirm the port i
 
     lsof -nP -iTCP:8790 -sTCP:LISTEN || echo "port free"
 
+A background start can report `failed with exit code 1` while an older server still holds the port. The output then shows `Rental map is on http://localhost:8790` and `[exited with code 1]`. The newer process exited because the port was taken. Check the port owner with `lsof` and `curl`. If `curl` prints `200`, the running server is fine. Do not restart it.
+
 Check that it answers:
 
     curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8790/
