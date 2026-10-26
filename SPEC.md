@@ -175,6 +175,16 @@ Source: [Pick the map filters](.scratch/rental-map/issues/13-map-filters.md).
 - The filter bar shows "N of M listings shown".
 - Filters belong to one person. They never go into the sheet, and they reset each time the app opens.
 
+### Mark many as reviewed
+
+- A "Select" button sits next to "N of M listings shown". It turns on select mode.
+- In select mode, each card has a tick box on its photo. A click anywhere on the card ticks it. It does not open the details.
+- A listing that is already reviewed shows a "Reviewed" tag, and its box cannot be ticked. A row with no Listing id cannot be ticked either.
+- A bar under the list shows "N selected", "Select all shown", "Cancel" and "Mark as reviewed". Escape works like Cancel.
+- "Mark as reviewed" sends one `saveCells` call per listing, one at a time. Each call writes Reviewed as true and checks the value the person saw, like a click on the Reviewed box.
+- The bar shows "Marked N listings as reviewed." A refused or failed save keeps its listing ticked, and the bar names it with the reason.
+- A listing that the filters hide leaves the selection.
+
 ### Distances
 
 The app shows the straight-line distance from each listing to each place. It works this out live and stores nothing.

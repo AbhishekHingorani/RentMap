@@ -140,6 +140,10 @@ const placeFormEl = document.getElementById("place-form");
 const placeNoteEl = document.getElementById("place-note");
 const sideTabsEl = document.getElementById("side-tabs");
 const addOpenEl = document.getElementById("add-open");
+const selectOpenEl = document.getElementById("select-open");
+const selectBarEl = document.getElementById("select-bar");
+const selectCountEl = document.getElementById("select-count");
+const selectMarkEl = document.getElementById("select-mark");
 // "Back to the list" sits next to "+ Add listing", so it stays in reach while the details scroll.
 const detailsBackEl = document.getElementById("details-back");
 const addViewEl = document.getElementById("add-view");
@@ -255,6 +259,9 @@ const state = {
   roughCircle: null,
   // The add steps, while they are open. null when they are closed.
   add: null,
+  // Select mode on the list. null when it is off. ids holds the ticked listings that the list shows.
+  // busy is the progress text while the marks save. note is the last result, as { text, isError }.
+  select: null,
 };
 
 function el(tag, className, text) {
@@ -475,10 +482,19 @@ function card(listing, scoreOf) {
   else photo.append(el("span", "photo-none", "No photo"));
 
   // The button covers the whole card, so a click anywhere on it opens the details.
-  const open = el("button", "card-open", listing.society || NOT_GIVEN);
-  open.type = "button";
-  if (listing.id === state.pickedId) open.setAttribute("aria-current", "true");
-  open.addEventListener("click", () => openDetails(listing.id));
+  // In select mode a label covers the card instead, so a click anywhere ticks the box.
+  let open;
+  if (state.select) {
+    open = el("label", "card-open", listing.society || NOT_GIVEN);
+    const pick = pickBox(listing);
+    open.htmlFor = pick.id;
+    photo.append(pick);
+  } else {
+    open = el("button", "card-open", listing.society || NOT_GIVEN);
+    open.type = "button";
+    if (listing.id === state.pickedId) open.setAttribute("aria-current", "true");
+    open.addEventListener("click", () => openDetails(listing.id));
+  }
   const society = el("h2", "card-society");
   society.append(open);
 
@@ -499,6 +515,7 @@ function card(listing, scoreOf) {
   // Furnishing and the site the listing came from, as small tags.
   const tags = el("p", "card-tags");
   if (listing.shortlisted) tags.append(el("span", "status status--shortlisted", "Shortlisted"));
+  if (state.select && listing.reviewed) tags.append(el("span", "status status--reviewed", "Reviewed"));
   const furnishing = toText(listing.row.Furnishing);
   if (furnishing) tags.append(el("span", `furnish ${furnishingClass(listing)}`, furnishing));
   const source = sourceTag(listing);
@@ -511,6 +528,121 @@ function card(listing, scoreOf) {
   item.append(photo, body);
   hoverLinks(item, () => state.markers.get(listing.id), ".pin", () => (listing.id === state.pickedId ? 1000 : 0));
   return item;
+}
+
+// --- Select mode ---
+
+// The tick box on a card in select mode. A reviewed listing, or a row with no Listing id, cannot be ticked.
+function pickBox(listing) {
+  const box = el("input", "card-pick");
+  box.type = "checkbox";
+  box.id = `pick-${listing.id}`;
+  box.checked = state.select.ids.has(listing.id);
+  box.disabled = Boolean(state.select.busy) || listing.reviewed || !toText(listing.row["Listing id"]);
+  box.addEventListener("change", () => {
+    if (box.checked) state.select.ids.add(listing.id);
+    else state.select.ids.delete(listing.id);
+    state.select.note = null;
+    box.closest(".card").classList.toggle("card--picked", box.checked);
+    renderSelectBar();
+  });
+  return box;
+}
+
+function canPick(listing) {
+  return !listing.reviewed && Boolean(toText(listing.row["Listing id"]));
+}
+
+function openSelect() {
+  state.select = { ids: new Set(), busy: "", note: null };
+  renderList();
+  // The Select button hides, so focus moves to the bar. Focus on a tick box would scroll the list.
+  document.getElementById("select-all").focus();
+}
+
+function closeSelect() {
+  state.select = null;
+  renderList();
+  selectOpenEl.focus();
+}
+
+function renderSelectBar() {
+  const select = state.select;
+  selectOpenEl.hidden = Boolean(select) || state.listings.length === 0;
+  selectBarEl.hidden = !select;
+  if (!select) return;
+  const count = select.ids.size;
+  const note = select.note;
+  selectCountEl.textContent = select.busy || note?.text || (count === 0 ? "Tick the listings you have reviewed." : `${count} selected`);
+  selectCountEl.classList.toggle("select-count--error", Boolean(!select.busy && note?.isError));
+  const pickable = [...listEl.querySelectorAll(".card-pick:not(:disabled)")];
+  const allTicked = pickable.length > 0 && pickable.every((box) => box.checked);
+  const all = document.getElementById("select-all");
+  all.textContent = allTicked ? "Clear all" : "Select all shown";
+  all.disabled = Boolean(select.busy) || pickable.length === 0;
+  selectMarkEl.disabled = Boolean(select.busy) || count === 0;
+  document.getElementById("select-cancel").disabled = Boolean(select.busy);
+}
+
+function toggleAllShown() {
+  const boxes = [...listEl.querySelectorAll(".card-pick:not(:disabled)")];
+  const tick = !boxes.every((box) => box.checked);
+  for (const box of boxes) {
+    if (box.checked === tick) continue;
+    box.checked = tick;
+    box.dispatchEvent(new Event("change"));
+  }
+  state.select.note = null;
+  renderSelectBar();
+}
+
+// Ticks Reviewed on each picked listing, one save at a time. Each save checks the value the person saw,
+// like a click on the Reviewed box. A refused or failed save keeps its listing ticked, so the person can try again.
+async function markReviewed() {
+  const select = state.select;
+  const ids = [...select.ids];
+  const failed = [];
+  for (const [index, id] of ids.entries()) {
+    select.busy = `Marking ${index + 1} of ${ids.length} as reviewed…`;
+    renderList();
+    const listing = listingById(id);
+    if (!listing || listing.reviewed) {
+      select.ids.delete(id);
+      continue;
+    }
+    state.saves++;
+    let reply;
+    try {
+      reply = await callScript({ action: "saveCells", id: listing.row["Listing id"], cells: [cellChange(listing, "Reviewed", true)] });
+    } catch (err) {
+      reply = { ok: false, error: err.message };
+    }
+    if (reply.ok) select.ids.delete(id);
+    else if (reply.error === ROW_GONE) {
+      select.ids.delete(id);
+      rowGone(id);
+    } else failed.push(`${listing.society || NOT_GIVEN}: ${refusalMessage(reply)}`);
+    if (reply.listing) putListing(reply.listing);
+  }
+  select.busy = "";
+  const marked = ids.length - failed.length;
+  const done = `Marked ${marked} ${marked === 1 ? "listing" : "listings"} as reviewed.`;
+  select.note = failed.length
+    ? { text: `${done} ${failed.length} could not be saved. ${failed.length === 1 ? "It stays" : "They stay"} ticked. ${failed.join(" ")}`, isError: true }
+    : { text: done, isError: false };
+  renderList();
+}
+
+function setUpSelect() {
+  selectOpenEl.addEventListener("click", openSelect);
+  document.getElementById("select-cancel").addEventListener("click", closeSelect);
+  document.getElementById("select-all").addEventListener("click", toggleAllShown);
+  selectMarkEl.addEventListener("click", () => {
+    if (!state.select.busy && state.select.ids.size) markReviewed();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.select && !state.select.busy && !document.querySelector("dialog[open]")) closeSelect();
+  });
 }
 
 // Pointing at a list item, or tabbing to it, lifts its pin on the map above the others and marks it.
@@ -683,7 +815,13 @@ function renderList() {
   fillSortChoices();
   const score = scoreOf();
   const shown = sortListings(filterListings(state.listings, state.filters, score), state.sort, state.places, score);
+  // A listing the filters hide, or one that is now reviewed, leaves the selection.
+  if (state.select) {
+    const pickable = new Set(shown.filter(canPick).map((l) => l.id));
+    for (const id of state.select.ids) if (!pickable.has(id)) state.select.ids.delete(id);
+  }
   listEl.replaceChildren(...shown.map((listing) => card(listing, score)));
+  for (const item of listEl.querySelectorAll(".card:has(.card-pick:checked)")) item.classList.add("card--picked");
   pinLayer.clearLayers();
   state.markers.clear();
   for (const listing of shown) {
@@ -697,6 +835,7 @@ function renderList() {
     total === 0
       ? "No listings yet. Add rows to the Tracker tab of the sheet, then reload."
       : `${shown.length} of ${total} ${total === 1 ? "listing" : "listings"} shown`;
+  renderSelectBar();
 }
 
 // --- Filters ---
@@ -2630,6 +2769,7 @@ async function start() {
     setUpSideTabs();
     setUpPlaceForm();
     setUpAddSteps();
+    setUpSelect();
     renderPlaces();
     renderList();
     const spots = [...state.listings, ...state.places].filter((l) => l.spot).map((l) => l.spot);

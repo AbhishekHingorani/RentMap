@@ -64,8 +64,19 @@
               <select id="sort-by"></select>
             </label>
           </form>
-          <p class="list-meta" id="list-meta" aria-live="polite">Loading the sheet…</p>
+          <div class="list-bar">
+            <p class="list-meta" id="list-meta" aria-live="polite">Loading the sheet…</p>
+            <button class="select-open" id="select-open" type="button" hidden>Select</button>
+          </div>
           <ol class="list" id="list"></ol>
+          <div class="select-bar" id="select-bar" role="region" aria-label="Selected listings" hidden>
+            <p class="select-count" id="select-count" aria-live="polite"></p>
+            <div class="select-actions">
+              <button class="select-all" id="select-all" type="button">Select all shown</button>
+              <button class="select-cancel" id="select-cancel" type="button">Cancel</button>
+              <button class="add-primary" id="select-mark" type="button">Mark as reviewed</button>
+            </div>
+          </div>
         </div>
         <div class="places-view" id="places-view" role="tabpanel" aria-labelledby="side-tab-places" hidden>
           <ol class="place-list" id="place-list"></ol>
