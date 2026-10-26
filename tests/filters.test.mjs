@@ -76,6 +76,12 @@ test("Shortlisted only keeps only listings with the Shortlisted box ticked", () 
   assert.equal(passes({ Status: "Visited" }), true);
 });
 
+test("Not yet reviewed keeps only listings with the Reviewed box not ticked", () => {
+  assert.equal(passes({ Status: "Visited" }, { unreviewedOnly: true }), true);
+  assert.equal(passes({ Status: "Visited", Reviewed: false }, { unreviewedOnly: true }), true);
+  assert.equal(passes({ Status: "Visited", Reviewed: true }, { unreviewedOnly: true }), false);
+});
+
 test("an old Shortlisted Status with no ticked box is not shortlisted", () => {
   assert.equal(passes({ Status: "Shortlisted" }, { shortlistedOnly: true }), false);
 });
@@ -126,7 +132,8 @@ test("the Price dropdown starts at Within budget, or at Any price with no Budget
 
 test("the score and shortlist dropdowns have fixed choices", () => {
   assert.deepEqual(SCORE_CHOICES.map((c) => c.minScore), [null, 5, 6, 7, 8]);
-  assert.deepEqual(SHORTLIST_CHOICES.map((c) => c.shortlistedOnly), [false, true]);
+  assert.deepEqual(SHORTLIST_CHOICES.map((c) => c.shortlistedOnly), [false, true, false]);
+  assert.deepEqual(SHORTLIST_CHOICES.map((c) => c.unreviewedOnly), [false, false, true]);
 });
 
 test("price, score and shortlist filters work together", () => {

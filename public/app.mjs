@@ -674,6 +674,7 @@ function fillFilterChoices() {
     maxCost: price.maxCost,
     minScore: scoreBox.hidden ? null : score.minScore,
     shortlistedOnly: shortlist.shortlistedOnly,
+    unreviewedOnly: shortlist.unreviewedOnly,
   });
 }
 

@@ -16,6 +16,7 @@ export function startFilters(budget) {
     maxCost: budget,
     configurations: new Set(CONFIGURATIONS),
     shortlistedOnly: false,
+    unreviewedOnly: false,
     minScore: null,
     search: "",
   };
@@ -53,8 +54,9 @@ export const SCORE_CHOICES = [
 ];
 
 export const SHORTLIST_CHOICES = [
-  { value: "all", label: "All", shortlistedOnly: false },
-  { value: "shortlisted", label: "Shortlisted only", shortlistedOnly: true },
+  { value: "all", label: "All", shortlistedOnly: false, unreviewedOnly: false },
+  { value: "shortlisted", label: "Shortlisted only", shortlistedOnly: true, unreviewedOnly: false },
+  { value: "unreviewed", label: "Not yet reviewed", shortlistedOnly: false, unreviewedOnly: true },
 ];
 
 // Total monthly cost, or Rent alone when Maintenance is empty. No Rent means nothing to check.
@@ -83,6 +85,7 @@ function passes(listing, filters, search, scoreOf) {
   if (CONFIGURATIONS.includes(key) && !filters.configurations.has(key)) return false;
 
   if (filters.shortlistedOnly && !listing.shortlisted) return false;
+  if (filters.unreviewedOnly && listing.reviewed) return false;
 
   // A listing with no score, like one with no map spot, has nothing to check.
   if (filters.minScore !== null && filters.minScore !== undefined) {

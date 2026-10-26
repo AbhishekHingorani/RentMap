@@ -168,7 +168,7 @@ Source: [Pick the map filters](.scratch/rental-map/issues/13-map-filters.md).
 - **Filter by:** 3 dropdowns that work together. A listing must pass all 3.
   - **Price:** Any price, Within budget, and steps every ₹5k like "Up to ₹25k". Within budget uses the Budget from the Settings tab and is missing when the Budget is empty. The steps run between the cheapest and the dearest listing. A price cap checks Total monthly cost. If Maintenance is empty, it checks Rent alone. A listing with no Rent passes. It starts at Within budget, or at Any price when there is no Budget.
   - **Distance score:** Any score, or 5, 6, 7 or 8 or more. It is hidden when no place has a map spot. A listing with no score passes.
-  - **Shortlist:** All, or Shortlisted only.
+  - **Shortlist:** All, Shortlisted only, or Not yet reviewed. Not yet reviewed keeps each listing whose Reviewed box is not ticked.
   - Changing them does not change the sheet.
 - **Search:** one box. It matches Society / building name and Locality. Case does not matter.
 - A filtered-out pin disappears from the map. Places always show.
