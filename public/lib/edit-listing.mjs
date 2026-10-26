@@ -22,7 +22,7 @@ export const LOCKED_COLUMNS = [
 ];
 
 // The row above the tabs changes these. Each click saves one cell.
-export const TOP_TAKE_COLUMNS = ["Shortlisted", ...PERSON_RATING_COLUMNS];
+export const TOP_TAKE_COLUMNS = ["Shortlisted", "Reviewed", ...PERSON_RATING_COLUMNS];
 
 // The app no longer shows or changes Status. The column stays in the sheet.
 export const UNUSED_COLUMNS = ["Status"];

@@ -104,6 +104,12 @@ test("the Shortlisted box reads a sheet boolean, or a hand-typed yes or TRUE", (
   assert.equal(listingsFromRows([{ Status: "Shortlisted" }])[0].shortlisted, false);
 });
 
+test("the Reviewed box reads a sheet boolean, and an empty cell is not reviewed", () => {
+  assert.equal(listingsFromRows([{ Reviewed: true }])[0].reviewed, true);
+  assert.equal(listingsFromRows([{ Reviewed: false }])[0].reviewed, false);
+  assert.equal(listingsFromRows([{}])[0].reviewed, false);
+});
+
 test("our rating is the average of Dimple's and Abhishek's filled ratings, out of 10", () => {
   const [both] = listingsFromRows([{ "Dimple's rating": 7.5, "Abhishek's rating": "9" }]);
   assert.equal(both.ourRating, 8.25);

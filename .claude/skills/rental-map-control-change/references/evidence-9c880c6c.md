@@ -1,0 +1,1 @@
+sed -i '' 's/$/\tFALSE/' apps-script/test-rows.tsv && sed -i '' 's/cells: \[{ column: "Reviewed", old: "", new: true }\]/cells: [{ column: "Reviewed", old: false, new: true }]/' tests/apps-script.test.mjs && sed -i '' 's/All 43 fields/All 44 fields/g' README.md SPEC.md && npm test 2>&1 | grep -E "^# (pass|fail)"; npm run check >/dev/null 2>&1 && echo CHECK OK

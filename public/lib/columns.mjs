@@ -45,6 +45,7 @@ export const TRACKER_COLUMNS = [
   "Shortlisted",
   "Dimple's rating",
   "Abhishek's rating",
+  "Reviewed",
 ];
 
 export const PLACES_COLUMNS = ["Name", "Address", "Lat", "Long", "Pin precision", "Added by"];

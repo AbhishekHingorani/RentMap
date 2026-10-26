@@ -47,6 +47,7 @@ var TRACKER_COLUMNS = [
   "Shortlisted",
   "Dimple's rating",
   "Abhishek's rating",
+  "Reviewed",
 ];
 var PLACES_COLUMNS = ["Name", "Address", "Lat", "Long", "Pin precision", "Added by"];
 var SETTINGS_COLUMNS = ["Setting", "Value"];
@@ -65,8 +66,11 @@ var RATING_COLUMNS = ["Safety", "Water supply", "Location", "Condition", "Natura
 var WORKED_OUT_COLUMNS = ["Total monthly cost", "Overall rating"];
 // public/lib/columns.mjs has the same list. tests/apps-script.test.mjs checks that they match.
 var STATUSES = ["To call", "Visit scheduled", "Visited", "Rejected"];
-// A tick box. The app writes true or false.
+// Tick boxes. The app writes true or false.
 var SHORTLISTED_COLUMN = "Shortlisted";
+// A new listing starts with Reviewed false.
+var REVIEWED_COLUMN = "Reviewed";
+var TICK_BOX_COLUMNS = [SHORTLISTED_COLUMN, REVIEWED_COLUMN];
 // Each person's own rating, 0 to 10 in steps of 0.5. They do not count toward Overall rating.
 // public/lib/columns.mjs has the same list, and public/lib/our-take.mjs has the same rule.
 var PERSON_RATING_COLUMNS = ["Dimple's rating", "Abhishek's rating"];
@@ -317,7 +321,7 @@ function editPlace(old, place) {
 }
 
 // listing: the new Tracker row keyed by column. The page made the Listing id and filled Status,
-// Listing link, Date added and Added by. A retried call with the same Listing id adds no second row.
+// Listing link, Date added, Added by and Reviewed. A row with no Reviewed gets false. A retried call with the same Listing id adds no second row.
 // A listing whose link key is already in the sheet is refused, and the reply holds the saved row.
 // The page checks this too, but two people can paste the same link at the same time.
 function addListing(listing) {
@@ -342,7 +346,8 @@ function addListing(listing) {
     var row = headers.map(function (header) {
       if (header === "Listing id") return id;
       if (WORKED_OUT_COLUMNS.indexOf(header) !== -1) return "";
-      return Object.prototype.hasOwnProperty.call(listing, header) ? listing[header] : "";
+      if (Object.prototype.hasOwnProperty.call(listing, header)) return listing[header];
+      return header === REVIEWED_COLUMN ? false : "";
     });
     var rowNumber = sheet.getLastRow() + 1;
     sheet.getRange(rowNumber, 1, 1, row.length).setValues([row]);
@@ -412,7 +417,7 @@ function cellProblem(cell) {
   if (PERSON_RATING_COLUMNS.indexOf(column) !== -1 && cell.new !== "" && personRatingOf(cell.new) === null) {
     return column + " must be a number from 0 to 10 in steps of 0.5, or empty.";
   }
-  if (column === SHORTLISTED_COLUMN && typeof cell.new !== "boolean") return "Shortlisted must be true or false.";
+  if (TICK_BOX_COLUMNS.indexOf(column) !== -1 && typeof cell.new !== "boolean") return column + " must be true or false.";
   return "";
 }
 

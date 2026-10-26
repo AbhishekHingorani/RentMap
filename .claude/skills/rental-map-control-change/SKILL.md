@@ -17,6 +17,8 @@ Change every layer of a field or control in one pass. Then grep the old name unt
 - New sheet column: the user must paste the updated Apps Script and redeploy it before a save can write the new cell. Put this as the first step in the reply, with the exact step to take.
 - Docs: `SPEC.md` (column table, row numbers, UI lines, refusal rules) and `GLOSSARY.md`.
 - Tests: `tests/*.test.mjs`. Remove tests that assert a removed control. Do not leave them failing or rewritten to pass.
+- Tick box (true or false) field: a new listing writes `false`. Old rows keep an empty cell and read as not ticked. The Apps Script refuses any value other than `true` or `false`.
+- Fixture rows: `apps-script/test-rows.tsv` needs one value per column on every row. Add the value to each line, for example with `sed -i '' 's/$/\tFALSE/' apps-script/test-rows.tsv`. Then update a test that expects the old empty value, such as `old: ""`, to expect the new value. This is a data change, not a test rewrite.
 - A new `public/lib/*.mjs` file must join the `check` script in `package.json`. Otherwise `npm run check` skips it.
 
 Verify with `npm test` and `npm run check`. Then shoot the page with the fake backend, as in the headless-chrome-screenshot-html skill.

@@ -185,6 +185,7 @@ test("the new row has Status To call, the link, the date, the name and the id", 
   assert.equal(row["Listing link"], LINK);
   assert.equal(row["Date added"], "2026-10-23");
   assert.equal(row["Added by"], "Asha");
+  assert.equal(row.Reviewed, false);
   assert.equal(row.Configuration, "2BHK");
   assert.equal(row["Rent (₹/month)"], 38999);
   assert.equal(row.Deposit, 117000);

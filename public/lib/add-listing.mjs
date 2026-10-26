@@ -235,7 +235,7 @@ export function handProblems(values) {
 export const PAGE_PIN_PRECISION = "building";
 
 // The new Tracker row, keyed by column. values holds the review form or the hand form, keyed by reply key.
-// The page fills Status, Listing link, Date added and Added by. The Apps Script fills the two worked-out columns.
+// The page fills Status, Listing link, Date added, Added by and Reviewed. The Apps Script fills the two worked-out columns.
 export function newListingRow({ id, values, link, addedBy, today, spot }) {
   const row = { "Listing id": id };
   for (const [key, column] of Object.entries(REPLY_COLUMNS)) {
@@ -252,6 +252,7 @@ export function newListingRow({ id, values, link, addedBy, today, spot }) {
   row["Pin precision"] = spot ? spot.precision : "";
   row["Date added"] = today;
   row["Added by"] = addedBy;
+  row.Reviewed = false;
   return row;
 }
 

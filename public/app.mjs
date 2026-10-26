@@ -5,7 +5,7 @@
 // When Claude web cannot read the page, the bookmarklet step reads it in the person's own browser.
 // A listing with no link, or one no Claude can read, goes in through the hand form.
 // A link already on the map blocks the add. The same society and Configuration only warns.
-// The row above the tabs saves Shortlisted and each person's 0 to 10 rating. The app does not show Status.
+// The row above the tabs saves Shortlisted, Reviewed and each person's 0 to 10 rating. The app does not show Status.
 // The Our take tab saves ratings, pros and cons the same way. The Apps Script refuses a click on a stale cell.
 // The "All fields" tab has the Edit form and Move pin. Both send the value the person saw, for the same clash check.
 // The Overview tab uploads photos to the shared Drive folder and adds each Drive link to the Photos cell.
@@ -826,18 +826,19 @@ function takeButton(text, key, take, onClick) {
   return button;
 }
 
-function shortlistBox(listing, take) {
+// A tick box above the tabs: Shortlisted or Reviewed. It saves on click.
+function tickBox(column, checked, take) {
   const label = el("label", "take-shortlist");
   const box = el("input");
   box.type = "checkbox";
-  box.dataset.key = "shortlisted";
-  box.checked = listing.shortlisted;
+  box.dataset.key = column.toLowerCase();
+  box.checked = checked;
   box.disabled = !take.canSave;
   box.addEventListener("change", () => {
     if (state.detail?.busy) renderDetails();
-    else saveCell("Shortlisted", box.checked, "top");
+    else saveCell(column, box.checked, "top");
   });
-  label.append(box, el("span", "", "Shortlisted"));
+  label.append(box, el("span", "", column));
   return label;
 }
 
@@ -897,13 +898,13 @@ function ratingRow(listing, column, take, at) {
   return row;
 }
 
-// The row between the distances and the tabs: Shortlisted and each person's own rating.
+// The row between the distances and the tabs: Shortlisted, Reviewed and each person's own rating.
 function topTake(listing, detail) {
   const take = takeState(listing, detail);
   const wrap = el("section", "top-take");
   wrap.setAttribute("aria-label", "Shortlist and our ratings");
   const line = el("div", "top-take-line");
-  line.append(shortlistBox(listing, take));
+  line.append(tickBox("Shortlisted", listing.shortlisted, take), tickBox("Reviewed", listing.reviewed, take));
   const ratings = el("div", "take-ratings");
   for (const column of PERSON_RATING_COLUMNS) ratings.append(personRatingRow(listing, column, take, detail));
   wrap.append(line, ratings, messageLine(detail, "top"));

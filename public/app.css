@@ -1676,7 +1676,7 @@ button.place-open:hover {
   gap: 0.375rem;
 }
 
-/* The row between the distances and the tabs: Shortlisted, Status and each person's own rating.
+/* The row between the distances and the tabs: Shortlisted, Reviewed and each person's own rating.
    A gap and a rule split it from the distances above. */
 .top-take {
   display: grid;

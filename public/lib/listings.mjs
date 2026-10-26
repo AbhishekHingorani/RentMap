@@ -14,7 +14,7 @@ export function toNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-// The Shortlisted tick box. The sheet holds true or false. A hand-typed "yes" or "TRUE" counts too.
+// The Shortlisted and Reviewed tick boxes. The sheet holds true or false. A hand-typed "yes" or "TRUE" counts too.
 export function isTicked(value) {
   if (typeof value === "boolean") return value;
   return ["true", "yes", "y", "1"].includes(toText(value).toLowerCase());
@@ -82,6 +82,7 @@ export function listingsFromRows(rows) {
       configuration: toText(row.Configuration),
       status: toText(row.Status),
       shortlisted: isTicked(row.Shortlisted),
+      reviewed: isTicked(row.Reviewed),
       rent,
       maintenance: toNumber(row["Maintenance (₹/month)"]),
       totalCost: totalCostOf(row, rent),

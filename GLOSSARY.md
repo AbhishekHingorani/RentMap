@@ -6,6 +6,8 @@
 
 **Shortlisted**: a tick box on a listing, apart from its Status. A Visited listing can be shortlisted. It used to be a Status value.
 
+**Reviewed**: a tick box on a listing. A person ticks it once they have looked the listing over. A new listing starts with it unticked.
+
 **Configuration**: the size of the home by rooms. One of: 1RK, 1BHK, 2BHK, 3BHK, 4BHK+.
 
 **Listed by**: who posted the listing. Owner or Dealer. A dealer listing usually means a brokerage fee.

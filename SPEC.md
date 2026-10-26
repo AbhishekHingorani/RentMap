@@ -76,10 +76,11 @@ One row per listing.
 | 41 | Shortlisted | tick box: true or false | person |
 | 42 | Dimple's rating | 0 to 10, steps of 0.5 | person; not part of Overall rating |
 | 43 | Abhishek's rating | 0 to 10, steps of 0.5 | person; not part of Overall rating |
+| 44 | Reviewed | tick box: true or false | person; a new listing starts false |
 
 Claude never fills the 5 ratings or the 2 person ratings.
 
-Columns 41 to 43 came after the sheet was first set up. Run `setup` again to add them to an old sheet. It also ticks Shortlisted on each row whose Status says Shortlisted, since that used to be a Status.
+Columns 41 to 44 came after the sheet was first set up. Run `setup` again to add them to an old sheet. An old row gets an empty Reviewed cell, which the app reads as false. It also ticks Shortlisted on each row whose Status says Shortlisted, since that used to be a Status.
 
 ### Places tab
 
@@ -150,13 +151,13 @@ All design work uses Impeccable, installed in `.claude/skills/impeccable`. Lapto
 
 A click on a card or a pin opens the details in the left column, with a "Back to the list" link.
 
-Header: society, locality, total cost, an "Over budget" tag when the total is above the Budget, Configuration, both ratings, and a link to the listing page. Under the distances: the Shortlisted tick box and a 0 to 10 number box for each person's rating.
+Header: society, locality, total cost, an "Over budget" tag when the total is above the Budget, Configuration, both ratings, and a link to the listing page. Under the distances: the Shortlisted and Reviewed tick boxes and a 0 to 10 number box for each person's rating.
 
 Tabs:
 - **Overview:** photos and photo upload, money, flat details, distance to each place.
 - **Our take:** the 5 ratings, pros, cons, notes.
 - **Contacts:** Listed by, broker name, broker phone, owner name, owner phone.
-- **All 43 fields:** every Tracker column with its number, an "Edit" button, and a "Move pin" button.
+- **All 44 fields:** every Tracker column with its number, an "Edit" button, and a "Move pin" button.
 
 If a person saves a listing that their filters hide, its details show a yellow note: "Your filters hide this listing on the map." The filters do not change.
 
@@ -290,18 +291,18 @@ Source: [Spot a listing added twice](.scratch/rental-map/issues/14-same-listing-
 
 Source: [Decide how to edit and delete a saved listing](.scratch/rental-map/issues/15-edit-delete-listing.md).
 
-- **Edit button.** On the "All 43 fields" tab, "Edit" makes the Claude-filled fields editable. "Save" writes them.
+- **Edit button.** On the "All 44 fields" tab, "Edit" makes the Claude-filled fields editable. "Save" writes them.
 - **Locked in the Edit form:** Listing id, Listing link, Total monthly cost, Overall rating, Date added, Added by, Lat, Long, Pin precision.
 - **Move pin.** Dragging the pin changes Lat and Long. An edit to Locality or Society does not move the pin.
-- **Above the tabs.** Under the distances: a Shortlisted tick box, and a 0 to 10 number box for each person's rating. The tick box saves on click. A number box saves on Enter or when it loses focus. An empty box clears the cell.
+- **Above the tabs.** Under the distances: a Shortlisted tick box, a Reviewed tick box, and a 0 to 10 number box for each person's rating. A tick box saves on click. A number box saves on Enter or when it loses focus. An empty box clears the cell.
 - **Our take.** Each of the 5 ratings saves at once on one click. That tab has no Save button.
 - **Lists.** A "×" removes one photo link, one pro or one con. A photo file in Drive stays in Drive.
 - **Notes.** Anyone can add a note. Each note has a "×" with a "Delete this note?" box. Anyone can delete any note. Nobody can edit a note.
 - **No delete.** There is no Delete button. The sheet owner can delete a row by hand in the sheet.
 
-- **Built (ticket 09).** The page code is `public/lib/edit-listing.mjs` and the "All 43 fields" tab in `public/app.mjs`. Both use the `saveCells` action.
+- **Built (ticket 09).** The page code is `public/lib/edit-listing.mjs` and the "All 44 fields" tab in `public/app.mjs`. Both use the `saveCells` action.
   - The Edit form makes 21 cells editable: the Claude-filled cells except Photos, and Broker phone, Owner name and Owner phone. A person fills those 3 by hand, and no other part of the app can change them.
-  - Shortlisted and the 2 person ratings show "Change it above the tabs". Status shows "The app does not use this". The 5 ratings, Pros, Cons and Notes show "Change it on the Our take tab". Photos shows "Change it on the Overview tab".
+  - Shortlisted, Reviewed and the 2 person ratings show "Change it above the tabs". Status shows "The app does not use this". The 5 ratings, Pros, Cons and Notes show "Change it on the Our take tab". Photos shows "Change it on the Overview tab".
   - Save fixes a value in the wrong format, like the review form does, and refuses one it cannot fix. A box the person did not touch is not sent, even when the sheet holds it in another format, like "3,000".
   - After a clash, a box the person did not touch shows the sheet value now.
   - A dropped pin also sets Pin precision to building, because the person put the pin on the home. The dashed circle goes away.
@@ -325,7 +326,7 @@ Example: Asha changes Rent to ₹40,000. Ravi opened the same listing 10 minutes
 - **Built (ticket 08).** The page code is `public/lib/our-take.mjs` and the Our take tab in `public/app.mjs`. The Apps Script actions are `getListing`, `saveCells` and `editList`.
   - `saveCells` takes `cells: [{ column, old, new }]`. A clash replies `{ "ok": false, "error": "clash", "clashes": [<columns>], "listing": <sheet row> }`. A gone row replies `{ "ok": false, "error": "row_gone" }`.
   - The clash check compares cells as trimmed text. A date cell compares as the ISO text that `load` sends.
-  - `saveCells` refuses Listing id, Total monthly cost, Overall rating and the 4 list cells. It refuses a Status outside the 4, a Shortlisted value that is not true or false, a rating that is not a whole number from 1 to 5 or empty, and a person rating that is not 0 to 10 in steps of 0.5 or empty.
+  - `saveCells` refuses Listing id, Total monthly cost, Overall rating and the 4 list cells. It refuses a Status outside the 4, a Shortlisted or Reviewed value that is not true or false, a rating that is not a whole number from 1 to 5 or empty, and a person rating that is not 0 to 10 in steps of 0.5 or empty.
   - `editList` takes Pros and Cons. An item cannot hold a ";". It refuses Notes until the owner decides how notes are split. It takes Photos too, from ticket 10.
   - `saveCells` refuses a call that sends the same column twice.
   - A click on the picked rating clears it.

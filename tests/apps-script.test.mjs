@@ -169,7 +169,7 @@ test("setup makes the 3 tabs with the spec headers in row 1", () => {
   const { context, sheets } = runScript([]);
   context.setup();
   assert.deepEqual(sheets.get("Tracker").cells[0], TRACKER_COLUMNS);
-  assert.equal(sheets.get("Tracker").cells[0].length, 43);
+  assert.equal(sheets.get("Tracker").cells[0].length, 44);
   assert.deepEqual(sheets.get("Places").cells[0], PLACES_COLUMNS);
   assert.deepEqual(sheets.get("Settings").cells[0], SETTINGS_COLUMNS);
   assert.deepEqual(sheets.get("Settings").cells[1], ["Budget (₹/month)", ""]);
@@ -424,8 +424,10 @@ test("addListing writes the row by header inside the lock, with Total monthly co
 
   assert.equal(reply.ok, true);
   assert.equal(tracker.cells.length, 2);
-  assert.equal(tracker.cells[1].length, 43);
+  assert.equal(tracker.cells[1].length, 44);
   assert.equal(cellOf(tracker, 1, "Listing id"), "L-abc");
+  // The page sent no Reviewed, so the script writes false.
+  assert.equal(cellOf(tracker, 1, "Reviewed"), false);
   assert.equal(cellOf(tracker, 1, "Status"), "To call");
   assert.equal(cellOf(tracker, 1, "Added by"), "Asha");
   assert.equal(cellOf(tracker, 1, "Total monthly cost"), 41999);
@@ -713,6 +715,16 @@ test("saveCells ticks Shortlisted and writes each person's rating as a number, o
   assert.equal(cellOf(tracker, 1, "Shortlisted"), false);
 });
 
+test("saveCells ticks and unticks Reviewed", () => {
+  const { tracker, context } = savedTracker();
+  const tick = post(context, { action: "saveCells", id: "L-abc", cells: [{ column: "Reviewed", old: false, new: true }] });
+  assert.equal(tick.ok, true);
+  assert.equal(cellOf(tracker, 1, "Reviewed"), true);
+  const untick = post(context, { action: "saveCells", id: "L-abc", cells: [{ column: "Reviewed", old: true, new: false }] });
+  assert.equal(untick.ok, true);
+  assert.equal(cellOf(tracker, 1, "Reviewed"), false);
+});
+
 test("saveCells refuses a bad Status, a bad rating, and cells it must not write", () => {
   const { tracker, context } = savedTracker();
   const before = JSON.stringify(tracker.cells);
@@ -732,6 +744,7 @@ test("saveCells refuses a bad Status, a bad rating, and cells it must not write"
     [{ column: "Pin precision", old: "society", new: "exact" }, "Unknown Pin precision: exact"],
     [{ column: "Status", old: "To call", new: "Shortlisted" }, "Unknown Status: Shortlisted"],
     [{ column: "Shortlisted", old: "", new: "yes" }, "Shortlisted must be true or false."],
+    [{ column: "Reviewed", old: false, new: "no" }, "Reviewed must be true or false."],
     [{ column: "Dimple's rating", old: "", new: 10.5 }, "Dimple's rating must be a number from 0 to 10 in steps of 0.5, or empty."],
     [{ column: "Abhishek's rating", old: "", new: 3.25 }, "Abhishek's rating must be a number from 0 to 10 in steps of 0.5, or empty."],
     [{ column: "Abhishek's rating", old: "", new: -1 }, "Abhishek's rating must be a number from 0 to 10 in steps of 0.5, or empty."],

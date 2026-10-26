@@ -88,7 +88,7 @@ Each distance is green for the listing nearest to that place and red for the far
 
 ## Our take
 
-Open a listing and pick the Our take tab. A click on a rating saves it at once. Shortlisted and the two 0 to 10 ratings sit above the tabs. A click on the picked rating clears it. Pros and cons have a box to add one and a "×" to remove one.
+Open a listing and pick the Our take tab. A click on a rating saves it at once. Shortlisted, Reviewed and the two 0 to 10 ratings sit above the tabs. A click on the picked rating clears it. Pros and cons have a box to add one and a "×" to remove one.
 
 If someone changed the same cell first, the sheet keeps their value. The tab shows it, with a message like "Someone changed Status to Visited. Your change was not saved."
 
@@ -96,7 +96,7 @@ After you paste a new `Code.gs`, edit the deployment and pick a new version, or 
 
 ## Edit a listing and move its pin
 
-Open a listing and pick the "All 43 fields" tab. Click "Edit" to change a value Claude filled in, like a wrong rent. Click Save. The app sends only the cells you changed.
+Open a listing and pick the "All 44 fields" tab. Click "Edit" to change a value Claude filled in, like a wrong rent. Click Save. The app sends only the cells you changed.
 
 If someone changed the same cell first, nothing is saved. That cell shows "In the sheet now: <value>". Click "Use sheet value" or "Keep mine", then Save again.
 
